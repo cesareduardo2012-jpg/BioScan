@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>La aplicación requiere Bluetooth para conectarse al escáner de leche.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>La aplicación requiere Bluetooth para conectarse al escáner de leche.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>La aplicación necesita acceso a la ubicación para detectar dispositivos Bluetooth cercanos.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'beta_bluetooth_screen.dart';
 
 void main() => runApp(const BioScanApp());
 
@@ -23,7 +24,7 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
-  final List<Widget> _pages = [const HomeScreen(), const GanaderosCRUD()];
+  final List<Widget> _pages = [const HomeScreen(), const GanaderosCRUD(), const BetaBluetoothScreen()];
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +36,7 @@ class _MainNavigationState extends State<MainNavigation> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.biotech), label: 'Escaneo'),
           NavigationDestination(icon: Icon(Icons.group), label: 'Ganaderos'),
+          NavigationDestination(icon: Icon(Icons.bluetooth_searching), label: 'Beta BLE'),
         ],
       ),
     );
