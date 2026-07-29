@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:scanner_leche_app/main.dart';
+import 'package:scanner_leche_app/models/ganadero.dart';
+import 'package:scanner_leche_app/services/database_helper.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
