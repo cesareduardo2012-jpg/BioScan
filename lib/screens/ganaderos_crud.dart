@@ -106,6 +106,7 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
 
                     final values = Ganadero(
                       id: ganadero?.id ?? '',
+                      clienteId: ganadero?.clienteId,
                       nombre: nombre,
                       apellidoPaterno: apellidoPaterno,
                       apellidoMaterno: apellidoMaterno,

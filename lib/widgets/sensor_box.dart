@@ -14,25 +14,43 @@ class SensorBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const brandColor = Color(0xFF008C83);
+
     return Column(
       children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 5),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 6),
         Container(
-          width: 80,
-          height: 60,
+          width: double.infinity,
+          height: 65,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: active ? Colors.indigo.shade50 : Colors.grey.shade200,
-            borderRadius: BorderRadius.circular(8),
+            color: active ? brandColor.withValues(alpha: 0.1) : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: active ? brandColor : Colors.grey.shade300,
+              width: 1.5,
+            ),
           ),
           alignment: Alignment.center,
           child: Text(
             value,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 17,
               fontWeight: FontWeight.bold,
-              color: active ? Colors.indigo : Colors.grey,
+              color: active ? brandColor : Colors.grey.shade600,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

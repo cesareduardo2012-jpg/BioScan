@@ -1,0 +1,43 @@
+{
+  "roles": {
+    "ADMINISTRADOR": {
+      "nombre": "Administrador",
+      "descripcion": "Propietario / Responsable de la cuenta BioScan",
+      "permisos": [
+        "realizar_mediciones",
+        "consultar_mediciones",
+        "consultar_reportes",
+        "gestionar_usuarios",
+        "crear_operador",
+        "editar_operador",
+        "cambiar_clave_operador",
+        "desactivar_operador",
+        "eliminar_operador",
+        "modificar_perfil_propio",
+        "cerrar_sesion"
+      ]
+    },
+    "OPERADOR": {
+      "nombre": "Operador",
+      "descripcion": "Usuario operativo limitado",
+      "permisos": [
+        "iniciar_sesion",
+        "realizar_mediciones",
+        "consultar_mediciones",
+        "consultar_reportes",
+        "cambiar_clave_propia",
+        "cerrar_sesion"
+      ],
+      "restricciones": [
+        "crear_usuarios",
+        "eliminar_usuarios",
+        "editar_otros_usuarios",
+        "administrar_cuentas",
+        "modificar_roles",
+        "acceder_configuracion_admin",
+        "crear_otro_operador"
+      ]
+    }
+  },
+  "max_operadores_por_cuenta": 1
+}
