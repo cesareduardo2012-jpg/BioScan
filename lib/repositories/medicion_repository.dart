@@ -3,6 +3,7 @@ import '../models/medicion.dart';
 
 abstract class MedicionRepository {
   Future<List<Medicion>> getMediciones();
+  Future<Medicion?> getMedicionById(String id);
   Future<List<Medicion>> getMedicionesByCliente(String clienteId);
   Future<List<Medicion>> getMedicionesByGanadero(String ganaderoId);
   Future<void> insertMedicion(Medicion medicion);
@@ -17,6 +18,9 @@ class MedicionRepositoryImpl implements MedicionRepository {
 
   @override
   Future<List<Medicion>> getMediciones() => _medicionDao.getAll();
+
+  @override
+  Future<Medicion?> getMedicionById(String id) => _medicionDao.getById(id);
 
   @override
   Future<List<Medicion>> getMedicionesByCliente(String clienteId) => _medicionDao.getByClienteId(clienteId);

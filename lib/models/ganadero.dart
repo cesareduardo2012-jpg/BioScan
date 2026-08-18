@@ -21,7 +21,7 @@ class Ganadero {
     String? correo,
     String? fechaRegistro,
     bool? sincronizado,
-  })  : clienteId = clienteId ?? 'default-cliente-001',
+  })  : clienteId = clienteId ?? '00000000-0000-0000-0000-000000000001',
         telefono = tel,
         correo = correo ?? '',
         fechaRegistro = fechaRegistro ?? '',
@@ -80,7 +80,7 @@ class Ganadero {
   factory Ganadero.fromMap(Map<String, dynamic> map) {
     return Ganadero(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? 'default-cliente-001',
+      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? '00000000-0000-0000-0000-000000000001',
       nombre: map['nombre']?.toString() ?? '',
       apellidoPaterno: (map['apellido_paterno'] ?? map['apellidoPaterno'])?.toString() ?? '',
       apellidoMaterno: (map['apellido_materno'] ?? map['apellidoMaterno'])?.toString() ?? '',

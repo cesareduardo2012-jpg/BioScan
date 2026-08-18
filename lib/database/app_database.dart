@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
@@ -32,10 +33,20 @@ class AppDatabase {
   Future<void> init() async {
     if (_db != null) return;
 
+    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+
     final dbPath = await _getDatabasePath();
+    debugPrint('================================================================');
+    debugPrint('[SQLITE INIT] INICIALIZANDO BASE DE DATOS EN:');
+    debugPrint('  $dbPath');
+    debugPrint('================================================================');
+
     _db = await openDatabase(
       dbPath,
-      version: 3,
+      version: 5,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -58,6 +69,16 @@ class AppDatabase {
         await db.execute(DispositivosTable.createTableQuery);
         await db.execute(GanaderosTable.createTableQuery);
         await db.execute(MedicionesTable.createTableQuery);
+
+        // Crear Índices B-Tree de rendimiento
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_cliente_id ON ${UsuariosTable.tableName}(${UsuariosTable.columnClienteId})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_username ON ${UsuariosTable.tableName}(${UsuariosTable.columnUsername})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_ganaderos_cliente_id ON ${GanaderosTable.tableName}(${GanaderosTable.columnClienteId})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_cliente_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnClienteId})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_ganadero_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnGanaderoId})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_usuario_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnUsuarioId})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_sincronizado ON ${MedicionesTable.tableName}(${MedicionesTable.columnSincronizado})');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_dispositivos_cliente_id ON ${DispositivosTable.tableName}(${DispositivosTable.columnClienteId})');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         await DatabaseMigrator.migrate(db, oldVersion, newVersion);
@@ -66,14 +87,21 @@ class AppDatabase {
 
     // Migrar datos legados desde archivos JSON si existen
     await _migrateLegacyJsonData();
+
+    // Imprimir diagnóstico completo de inicio
+    await printDatabaseDiagnostics();
   }
 
   Future<String> _getDatabasePath() async {
     Directory directory;
-    try {
-      directory = await getApplicationDocumentsDirectory();
-    } catch (_) {
+    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
       directory = Directory(p.join(Directory.current.path, '.bioscan_data'));
+    } else {
+      try {
+        directory = await getApplicationDocumentsDirectory();
+      } catch (_) {
+        directory = Directory(p.join(Directory.current.path, '.bioscan_data'));
+      }
     }
     if (!await directory.exists()) {
       await directory.create(recursive: true);
@@ -81,12 +109,48 @@ class AppDatabase {
     return p.join(directory.path, 'bioscan.db');
   }
 
+  Future<void> printDatabaseDiagnostics() async {
+    final dbPath = await _getDatabasePath();
+    debugPrint('\n=================== DIAGNÓSTICO BASE DE DATOS SQLITE ===================');
+    debugPrint('[SQLITE RUTA FISICA]: $dbPath');
+
+    try {
+      final tables = await db.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
+      final tableNames = tables.map((t) => t['name'].toString()).toList();
+      debugPrint('[SQLITE TABLAS EXISTENTES]: $tableNames');
+
+      final schema = await db.rawQuery("PRAGMA table_info(${GanaderosTable.tableName})");
+      debugPrint('[SQLITE ESQUEMA GANADEROS]:');
+      for (var col in schema) {
+        debugPrint('  - ${col['name']} (${col['type']}) | NotNull: ${col['notnull']} | Default: ${col['dflt_value']}');
+      }
+
+      final countResult = await db.rawQuery("SELECT COUNT(*) as total FROM ${GanaderosTable.tableName}");
+      final total = Sqflite.firstIntValue(countResult) ?? 0;
+      debugPrint('[SQLITE GANADEROS CANTIDAD REGISTROS]: $total');
+
+      final rows = await db.query(GanaderosTable.tableName);
+      debugPrint('[SQLITE CONTENIDO TABLA GANADEROS]:');
+      for (var r in rows) {
+        debugPrint('  -> $r');
+      }
+    } catch (e, st) {
+      debugPrint('[SQLITE DIAGNOSTICS ERROR]: $e');
+      debugPrint(st.toString());
+    }
+    debugPrint('=======================================================================\n');
+  }
+
   Future<void> _migrateLegacyJsonData() async {
     Directory directory;
-    try {
-      directory = await getApplicationDocumentsDirectory();
-    } catch (_) {
+    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
       directory = Directory(p.join(Directory.current.path, '.bioscan_data'));
+    } else {
+      try {
+        directory = await getApplicationDocumentsDirectory();
+      } catch (_) {
+        directory = Directory(p.join(Directory.current.path, '.bioscan_data'));
+      }
     }
 
     final ganaderosFile = File(p.join(directory.path, 'ganaderos.json'));

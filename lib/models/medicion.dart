@@ -1,5 +1,6 @@
 class Medicion {
   final String id;
+  final String clienteId;
   final String ganaderoId;
   final String? dispositivoId;
   final String? usuarioId;
@@ -13,6 +14,7 @@ class Medicion {
 
   const Medicion({
     required this.id,
+    String? clienteId,
     required this.ganaderoId,
     this.dispositivoId,
     this.usuarioId,
@@ -23,7 +25,8 @@ class Medicion {
     String? observaciones,
     bool? sincronizado,
     this.fechaSincronizacion,
-  })  : densidad = agua,
+  })  : clienteId = clienteId ?? '00000000-0000-0000-0000-000000000001',
+        densidad = agua,
         observaciones = observaciones ?? '',
         sincronizado = sincronizado ?? false;
 
@@ -32,6 +35,7 @@ class Medicion {
 
   Medicion copyWith({
     String? id,
+    String? clienteId,
     String? ganaderoId,
     String? dispositivoId,
     String? usuarioId,
@@ -46,6 +50,7 @@ class Medicion {
   }) {
     return Medicion(
       id: id ?? this.id,
+      clienteId: clienteId ?? this.clienteId,
       ganaderoId: ganaderoId ?? this.ganaderoId,
       dispositivoId: dispositivoId ?? this.dispositivoId,
       usuarioId: usuarioId ?? this.usuarioId,
@@ -62,6 +67,7 @@ class Medicion {
   factory Medicion.fromMap(Map<String, dynamic> map) {
     return Medicion(
       id: map['id']?.toString() ?? '',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '00000000-0000-0000-0000-000000000001',
       ganaderoId: (map['ganadero_id'] ?? map['ganaderoId'])?.toString() ?? '',
       dispositivoId: (map['dispositivo_id'] ?? map['dispositivoId'])?.toString(),
       usuarioId: (map['usuario_id'] ?? map['usuarioId'])?.toString(),
@@ -77,6 +83,7 @@ class Medicion {
 
   Map<String, dynamic> toMap() => {
         'id': id,
+        'cliente_id': clienteId,
         'ganadero_id': ganaderoId,
         'dispositivo_id': dispositivoId,
         'usuario_id': usuarioId,

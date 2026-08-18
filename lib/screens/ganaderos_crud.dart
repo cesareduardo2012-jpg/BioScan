@@ -94,7 +94,10 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                 const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () async {
+                    debugPrint('\n================================================================');
+                    debugPrint('[GANADERO UI] Botón guardar presionado');
                     if (!formKey.currentState!.validate()) {
+                      debugPrint('[GANADERO UI] Validación de formulario falló. Revise los campos.');
                       return;
                     }
 
@@ -103,6 +106,13 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                     final apellidoMaterno = apellidoMaternoController.text.trim();
                     final rancho = ranchoController.text.trim();
                     final tel = telController.text.trim();
+
+                    debugPrint('[GANADERO UI] Datos ingresados:');
+                    debugPrint('  nombre = $nombre');
+                    debugPrint('  apellidoPaterno = $apellidoPaterno');
+                    debugPrint('  apellidoMaterno = $apellidoMaterno');
+                    debugPrint('  rancho = $rancho');
+                    debugPrint('  telefono = $tel');
 
                     final values = Ganadero(
                       id: ganadero?.id ?? '',
@@ -116,15 +126,19 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
 
                     try {
                       if (ganadero == null) {
+                        debugPrint('[GANADERO UI] Invocando callback widget.onAddGanadero...');
                         await widget.onAddGanadero(values);
+                        debugPrint('[GANADERO UI] widget.onAddGanadero completado con éxito.');
                       } else {
+                        debugPrint('[GANADERO UI] Invocando callback widget.onEditGanadero...');
                         await widget.onEditGanadero(values);
+                        debugPrint('[GANADERO UI] widget.onEditGanadero completado con éxito.');
                       }
                       if (sheetContext.mounted) {
                         Navigator.pop(sheetContext);
                       }
                     } catch (e, stackTrace) {
-                      debugPrint('Error al guardar ganadero: $e');
+                      debugPrint('[GANADERO UI ERROR] Excepción al guardar ganadero: $e');
                       debugPrint(stackTrace.toString());
                       if (mounted) {
                         showDialog(

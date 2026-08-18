@@ -217,6 +217,16 @@ void main() {
         tel: '3411234567',
       );
 
+      final dispositivo = const Dispositivo(
+        id: 'disp-1',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        numeroSerie: 'BS-990011',
+        nombre: 'BioScan Pro Alpha',
+        modelo: 'BS-2026',
+        fechaRegistro: '2026-08-12T00:00:00.000',
+      );
+      await ServiceLocator.dispositivoRepository.insertDispositivo(dispositivo);
+
       await ServiceLocator.ganaderoRepository.insertGanadero(ganadero);
 
       final saved = await ServiceLocator.ganaderoRepository.getGanaderosByCliente(DatabaseMigrator.defaultClienteId);
@@ -228,7 +238,7 @@ void main() {
         id: 'm-1',
         ganaderoId: 'g-1',
         dispositivoId: 'disp-1',
-        usuarioId: 'usr-admin-default-001',
+        usuarioId: DatabaseMigrator.defaultAdminId,
         ph: '6.65',
         agua: '0.0%',
         temperatura: '23.5°C',
@@ -241,7 +251,7 @@ void main() {
       expect(mediciones, hasLength(1));
       expect(mediciones.first.ph, '6.65');
       expect(mediciones.first.dispositivoId, 'disp-1');
-      expect(mediciones.first.usuarioId, 'usr-admin-default-001');
+      expect(mediciones.first.usuarioId, DatabaseMigrator.defaultAdminId);
 
       await ServiceLocator.ganaderoRepository.deleteGanadero(saved.first.id);
 
@@ -342,12 +352,12 @@ void main() {
     });
   });
 
-  group('Pruebas de Migración de Base de Datos v2 a v3', () {
-    test('Migra la estructura v2 a v3 agregando columnas de autenticación en usuarios y usuario_id en mediciones', () async {
+  group('Pruebas de Migración de Base de Datos v2 a v4', () {
+    test('Migra la estructura v2 a v4 agregando columnas de autenticación en usuarios e índices B-Tree de rendimiento', () async {
       final db = ServiceLocator.database.db;
 
-      // Ejecutar migrador v2 -> v3
-      await DatabaseMigrator.migrate(db, 2, 3);
+      // Ejecutar migrador v2 -> v4
+      await DatabaseMigrator.migrate(db, 2, 4);
 
       final usuariosInfo = await db.rawQuery("PRAGMA table_info(usuarios)");
       final hasUsername = usuariosInfo.any((c) => c['name'] == 'username');
@@ -361,6 +371,10 @@ void main() {
       final medicionesInfo = await db.rawQuery("PRAGMA table_info(mediciones)");
       final hasUsuarioId = medicionesInfo.any((c) => c['name'] == 'usuario_id');
       expect(hasUsuarioId, isTrue);
+
+      final indexes = await db.rawQuery("PRAGMA index_list(usuarios)");
+      final hasIndexCliente = indexes.any((idx) => idx['name'] == 'idx_usuarios_cliente_id');
+      expect(hasIndexCliente, isTrue);
     });
   });
 }

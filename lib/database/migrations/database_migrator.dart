@@ -8,7 +8,8 @@ import '../tables/usuarios_table.dart';
 class DatabaseMigrator {
   DatabaseMigrator._();
 
-  static const String defaultClienteId = 'default-cliente-001';
+  static const String defaultClienteId = '00000000-0000-0000-0000-000000000001';
+  static const String defaultAdminId = '00000000-0000-0000-0000-000000000002';
 
   static Future<void> migrate(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
@@ -84,6 +85,29 @@ class DatabaseMigrator {
       if (!hasUsuarioId) {
         await db.execute('ALTER TABLE ${MedicionesTable.tableName} ADD COLUMN ${MedicionesTable.columnUsuarioId} TEXT');
       }
+    }
+
+    if (oldVersion < 4) {
+      // Migración v4: Índices B-Tree de rendimiento para escalabilidad a miles de registros y aislamiento multi-tenant
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_cliente_id ON ${UsuariosTable.tableName}(${UsuariosTable.columnClienteId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_usuarios_username ON ${UsuariosTable.tableName}(${UsuariosTable.columnUsername})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_ganaderos_cliente_id ON ${GanaderosTable.tableName}(${GanaderosTable.columnClienteId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_ganadero_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnGanaderoId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_usuario_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnUsuarioId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_sincronizado ON ${MedicionesTable.tableName}(${MedicionesTable.columnSincronizado})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_dispositivos_cliente_id ON ${DispositivosTable.tableName}(${DispositivosTable.columnClienteId})');
+    }
+
+    if (oldVersion < 5) {
+      // Migración v5: Agregar columna cliente_id a la tabla mediciones para soporte multi-tenant total
+      final medicionesInfo = await db.rawQuery("PRAGMA table_info(${MedicionesTable.tableName})");
+      final hasClienteId = medicionesInfo.any((c) => c['name'] == MedicionesTable.columnClienteId);
+      if (!hasClienteId) {
+        await db.execute(
+          'ALTER TABLE ${MedicionesTable.tableName} ADD COLUMN ${MedicionesTable.columnClienteId} TEXT NOT NULL DEFAULT \'$defaultClienteId\'',
+        );
+      }
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_cliente_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnClienteId})');
     }
   }
 }

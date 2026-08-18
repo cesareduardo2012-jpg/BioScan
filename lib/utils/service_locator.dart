@@ -11,6 +11,7 @@ import '../repositories/medicion_repository.dart';
 import '../repositories/usuario_repository.dart';
 import '../services/auth_service.dart';
 import '../services/sync_service.dart';
+import '../utils/supabase_config.dart';
 
 class ServiceLocator {
   ServiceLocator._();
@@ -27,6 +28,8 @@ class ServiceLocator {
   static Future<void> init() async {
     database = AppDatabase.instance;
     await database.init();
+
+    await SupabaseConfig.init();
 
     final clienteDao = ClienteDao(database);
     final usuarioDao = UsuarioDao(database);

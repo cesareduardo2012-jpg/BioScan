@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/cliente.dart';
 import '../models/ganadero.dart';
@@ -25,11 +26,31 @@ class _MainNavigationState extends State<MainNavigation> {
   List<Medicion> _mediciones = [];
   String? _selectedClienteId;
   String? _selectedGanaderoId;
+  bool _isSyncing = false;
+  Timer? _syncTimer;
 
   @override
   void initState() {
     super.initState();
     _loadInitialData();
+    _startPeriodicSync();
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startPeriodicSync() {
+    _syncTimer?.cancel();
+    // Intenta sincronizar automáticamente con Supabase en la nube cada 30 segundos si hay internet
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      final auth = ServiceLocator.authService;
+      if (auth.isLoggedIn) {
+        await ServiceLocator.syncService.syncPendingRecords();
+      }
+    });
   }
 
   Future<void> _loadInitialData() async {
@@ -47,6 +68,9 @@ class _MainNavigationState extends State<MainNavigation> {
     });
 
     await _loadFilteredData();
+
+    // Disparar sincronización inicial automática en segundo plano
+    ServiceLocator.syncService.syncPendingRecords();
   }
 
   Future<void> _loadFilteredData() async {
@@ -78,27 +102,86 @@ class _MainNavigationState extends State<MainNavigation> {
 
   Future<void> _addGanadero(Ganadero ganadero) async {
     final activeClienteId = _selectedClienteId ?? ServiceLocator.authService.activeClienteId;
+    debugPrint('[GANADERO SERVICE/APP] Iniciando registro de ganadero en _addGanadero...');
+    debugPrint('[GANADERO SERVICE/APP] activeClienteId resolvió a: $activeClienteId');
+
+    final nowIso = DateTime.now().toIso8601String();
     final newGanadero = ganadero.id.isEmpty
         ? ganadero.copyWith(
             id: UuidGenerator.generate(),
             clienteId: activeClienteId,
-            fechaRegistro: DateTime.now().toIso8601String(),
+            fechaRegistro: nowIso,
             sincronizado: false,
           )
-        : ganadero.copyWith(clienteId: activeClienteId);
+        : ganadero.copyWith(
+            clienteId: activeClienteId,
+            fechaRegistro: ganadero.fechaRegistro.isEmpty ? nowIso : ganadero.fechaRegistro,
+          );
 
+    debugPrint('[GANADERO SERVICE/APP] Objeto final preparado para inserción: ${newGanadero.toMap()}');
     await ServiceLocator.ganaderoRepository.insertGanadero(newGanadero);
+    debugPrint('[GANADERO SERVICE/APP] Registro completado en Repository. Recargando datos en UI...');
     await _loadFilteredData();
+
+    // Disparar sincronización automática en segundo plano
+    ServiceLocator.syncService.syncPendingRecords();
   }
 
   Future<void> _updateGanadero(Ganadero ganadero) async {
     await ServiceLocator.ganaderoRepository.updateGanadero(ganadero);
     await _loadFilteredData();
+
+    // Disparar sincronización automática inmediata
+    ServiceLocator.syncService.syncPendingRecords();
   }
 
   Future<void> _deleteGanadero(String id) async {
     await ServiceLocator.ganaderoRepository.deleteGanadero(id);
     await _loadFilteredData();
+
+    // Disparar sincronización automática inmediata
+    ServiceLocator.syncService.syncPendingRecords();
+  }
+
+  Future<void> _handleManualSync() async {
+    if (_isSyncing) return;
+
+    setState(() => _isSyncing = true);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sincronizando datos con Supabase Nube...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
+    try {
+      await ServiceLocator.syncService.syncPendingRecords();
+      await _loadFilteredData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('¡Sincronización con la nube completada con éxito!'),
+          backgroundColor: Color(0xFF008C83),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al sincronizar con la nube: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -225,6 +308,20 @@ class _MainNavigationState extends State<MainNavigation> {
                       ],
                     ),
                   ),
+                  // Botón Sincronizar con la nube
+                  IconButton(
+                    icon: _isSyncing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+                    tooltip: 'Sincronizar con la nube',
+                    onPressed: _isSyncing ? null : _handleManualSync,
+                  ),
+                  const SizedBox(width: 2),
+                  // Botón Cerrar Sesión
                   IconButton(
                     icon: const Icon(Icons.logout, color: Colors.white),
                     tooltip: 'Cerrar Sesión',

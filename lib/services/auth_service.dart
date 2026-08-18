@@ -6,6 +6,7 @@ import '../database/migrations/database_migrator.dart';
 import '../models/usuario.dart';
 import '../repositories/usuario_repository.dart';
 import '../utils/password_hasher.dart';
+import '../utils/supabase_config.dart';
 import '../utils/uuid_generator.dart';
 
 class AuthException implements Exception {
@@ -68,7 +69,7 @@ class AuthService extends ChangeNotifier {
       final hash = PasswordHasher.hashPassword(initialRawPassword, salt);
 
       final newAdmin = Usuario(
-        id: 'usr-admin-default-001',
+        id: DatabaseMigrator.defaultAdminId,
         clienteId: defaultClienteId,
         username: initialUsername,
         nombre: 'Administrador BioScan',
@@ -92,6 +93,23 @@ class AuthService extends ChangeNotifier {
       throw AuthException('Por favor ingrese su usuario y contraseña.');
     }
 
+    // 1. Intentar autenticación remota en Supabase Auth si hay conexión
+    if (SupabaseConfig.isInitialized) {
+      try {
+        final email = cleanUsername.contains('@') ? cleanUsername : '$cleanUsername@bioscan.app';
+        final response = await SupabaseConfig.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+        if (response.user != null) {
+          debugPrint('Autenticación en Supabase Auth exitosa para: $cleanUsername');
+        }
+      } catch (e) {
+        debugPrint('Supabase Auth no disponible o credenciales remotas pendientes: $e');
+      }
+    }
+
+    // 2. Verificar credenciales locales en SQLite
     Usuario? user;
     try {
       user = await _usuarioRepository.getUsuarioByUsername(cleanUsername);
@@ -108,7 +126,7 @@ class AuthService extends ChangeNotifier {
       throw AuthException('El usuario ingresado se encuentra desactivado. Contacte a su administrador.');
     }
 
-    // Si el usuario legados no tiene password_hash o salt, migrar en el primer login
+    // Si el usuario no tiene password_hash o salt, migrar en el primer login
     if (user.passwordHash.isEmpty || user.salt.isEmpty) {
       final newSalt = PasswordHasher.generateSalt();
       final newHash = PasswordHasher.hashPassword(password, newSalt);
@@ -141,6 +159,15 @@ class AuthService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_prefUserIdKey);
     await prefs.remove(_prefClienteIdKey);
+
+    if (SupabaseConfig.isInitialized) {
+      try {
+        await SupabaseConfig.client.auth.signOut();
+      } catch (e) {
+        debugPrint('Error al cerrar sesión en Supabase Auth: $e');
+      }
+    }
+
     _currentUser = null;
     notifyListeners();
   }
@@ -178,13 +205,28 @@ class AuthService extends ChangeNotifier {
       clienteId: clienteId,
       username: cleanUsername,
       nombre: nombre.trim(),
-      correo: (correo ?? '').trim().isEmpty ? '$cleanUsername@bioscan.local' : correo!.trim(),
+      correo: (correo ?? '').trim().isEmpty ? '$cleanUsername@bioscan.app' : correo!.trim(),
       passwordHash: passwordHash,
       salt: salt,
       rol: 'OPERADOR',
       fechaRegistro: DateTime.now().toIso8601String(),
       activo: true,
     );
+
+    // Intentar crear en Supabase Nube vía RPC segura
+    if (SupabaseConfig.isInitialized) {
+      try {
+        await SupabaseConfig.client.rpc('create_operator_user', params: {
+          'p_username': cleanUsername,
+          'p_nombre': nombre.trim(),
+          'p_password': password,
+          'p_correo': newOperator.correo,
+        });
+        debugPrint('Operador registrado exitosamente en Supabase Nube vía RPC.');
+      } catch (e) {
+        debugPrint('Aviso: Creación de operador en Supabase RPC no disponible (se mantendrá en SQLite local para sync posterior): $e');
+      }
+    }
 
     await _usuarioRepository.insertUsuario(newOperator);
     return newOperator;

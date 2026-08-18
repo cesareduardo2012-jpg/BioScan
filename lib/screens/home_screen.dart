@@ -188,6 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           try {
                             final medicion = Medicion(
                               id: UuidGenerator.generate(),
+                              clienteId: widget.cliente?.id ?? ServiceLocator.authService.activeClienteId,
                               ganaderoId: selectedGanadero.id,
                               dispositivoId: btManager.connectedDevice?.remoteId.toString(),
                               usuarioId: widget.usuario?.id ?? ServiceLocator.authService.currentUser?.id,
@@ -200,6 +201,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             );
                             await ServiceLocator.medicionRepository.insertMedicion(medicion);
                             await widget.onMeasurementSaved();
+
+                            // Sincronizar y respaldar en tiempo real a Supabase Nube
+                            ServiceLocator.syncService.syncPendingRecords();
 
                             if (!context.mounted) return;
 
@@ -260,17 +264,10 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (dialogContext) {
-        final bt = BluetoothManager.instance;
-
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            void listener() {
-              if (dialogContext.mounted) {
-                setDialogState(() {});
-              }
-            }
-
-            bt.addListener(listener);
+        return ListenableBuilder(
+          listenable: BluetoothManager.instance,
+          builder: (context, _) {
+            final bt = BluetoothManager.instance;
 
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -287,10 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   else
                     IconButton(
                       icon: const Icon(Icons.refresh, color: Colors.orange),
-                      onPressed: () {
-                        bt.startScan();
-                        setDialogState(() {});
-                      },
+                      onPressed: bt.startScan,
                     ),
                 ],
               ),
@@ -326,7 +320,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   }
                                 },
                               );
-                              bt.removeListener(listener);
                               Navigator.pop(dialogContext);
                             },
                           );
@@ -337,7 +330,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 TextButton(
                   onPressed: () {
                     bt.stopScan();
-                    bt.removeListener(listener);
                     Navigator.pop(dialogContext);
                   },
                   child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),

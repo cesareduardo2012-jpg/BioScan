@@ -18,6 +18,16 @@ class MedicionDao {
     return maps.map((map) => Medicion.fromMap(map)).toList();
   }
 
+  Future<Medicion?> getById(String id) async {
+    final maps = await _database.db.query(
+      MedicionesTable.tableName,
+      where: '${MedicionesTable.columnId} = ?',
+      whereArgs: [id],
+    );
+    if (maps.isEmpty) return null;
+    return Medicion.fromMap(maps.first);
+  }
+
   Future<List<Medicion>> getByGanaderoId(String ganaderoId) async {
     final maps = await _database.db.query(
       MedicionesTable.tableName,
@@ -31,10 +41,10 @@ class MedicionDao {
   Future<List<Medicion>> getByClienteId(String clienteId) async {
     final maps = await _database.db.rawQuery('''
       SELECT m.* FROM ${MedicionesTable.tableName} m
-      INNER JOIN ${GanaderosTable.tableName} g ON m.${MedicionesTable.columnGanaderoId} = g.${GanaderosTable.columnId}
-      WHERE g.${GanaderosTable.columnClienteId} = ?
+      LEFT JOIN ${GanaderosTable.tableName} g ON m.${MedicionesTable.columnGanaderoId} = g.${GanaderosTable.columnId}
+      WHERE m.${MedicionesTable.columnClienteId} = ? OR g.${GanaderosTable.columnClienteId} = ?
       ORDER BY m.${MedicionesTable.columnFecha} DESC
-    ''', [clienteId]);
+    ''', [clienteId, clienteId]);
     return maps.map((map) => Medicion.fromMap(map)).toList();
   }
 
