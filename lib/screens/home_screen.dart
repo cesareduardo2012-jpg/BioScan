@@ -84,6 +84,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // Selector de Ganadero
               DropdownButtonFormField<String>(
                 initialValue: widget.selectedGanaderoId,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Ganadero Responsable',
                   prefixIcon: Icon(Icons.person_pin),
@@ -92,7 +93,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 items: widget.ganaderos
                     .map((ganadero) => DropdownMenuItem<String>(
                           value: ganadero.id,
-                          child: Text('${ganadero.nombreCompleto} (${ganadero.rancho})'),
+                          child: Text(
+                            '${ganadero.nombreCompleto} (${ganadero.rancho})',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ))
                     .toList(),
                 onChanged: widget.onSelectedGanaderoChanged,

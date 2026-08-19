@@ -536,9 +536,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                         children: [
                           Row(
                             children: [
-                              Text(
-                                _adminUser?.nombre ?? 'Administrador',
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                              Flexible(
+                                child: Text(
+                                  _adminUser?.nombre ?? 'Administrador',
+                                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Container(
@@ -576,9 +579,11 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'USUARIO OPERADOR (MÁX. 1 POR CUENTA)',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                const Flexible(
+                  child: Text(
+                    'USUARIO OPERADOR (MÁX. 1 POR CUENTA)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                  ),
                 ),
                 if (_operatorUser == null)
                   FilledButton.icon(
