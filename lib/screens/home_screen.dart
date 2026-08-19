@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/cliente.dart';
+import '../models/dispositivo.dart';
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
 import '../models/usuario.dart';
@@ -190,11 +191,30 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: canRegister
                       ? () async {
                           try {
+                            final clienteId = widget.cliente?.id ?? ServiceLocator.authService.activeClienteId;
+                            final connectedDevice = btManager.connectedDevice;
+
+                            // La tabla mediciones exige que dispositivo_id ya exista en la
+                            // tabla dispositivos (FOREIGN KEY); se registra/actualiza aquí
+                            // usando la MAC del ESP32 como id antes de guardar la medición.
+                            if (connectedDevice != null) {
+                              await ServiceLocator.dispositivoRepository.insertDispositivo(
+                                Dispositivo(
+                                  id: connectedDevice.remoteId.toString(),
+                                  clienteId: clienteId,
+                                  numeroSerie: connectedDevice.remoteId.toString(),
+                                  nombre: connectedDevice.platformName.isNotEmpty ? connectedDevice.platformName : 'Sensor ESP32',
+                                  modelo: 'ESP32 BioScan',
+                                  fechaRegistro: DateTime.now().toIso8601String(),
+                                ),
+                              );
+                            }
+
                             final medicion = Medicion(
                               id: UuidGenerator.generate(),
-                              clienteId: widget.cliente?.id ?? ServiceLocator.authService.activeClienteId,
+                              clienteId: clienteId,
                               ganaderoId: selectedGanadero.id,
-                              dispositivoId: btManager.connectedDevice?.remoteId.toString(),
+                              dispositivoId: connectedDevice?.remoteId.toString(),
                               usuarioId: widget.usuario?.id ?? ServiceLocator.authService.currentUser?.id,
                               ph: ph,
                               agua: densidad,
