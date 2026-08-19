@@ -154,17 +154,21 @@ class BluetoothManager extends ChangeNotifier {
     } catch (_) {}
 
     // 2. Extraer SIEMPRE la ÚLTIMA ocurrencia usando Expresiones Regulares para Ph, T, D
-    final phMatches = RegExp(r'(?:Ph|PH|ph)\s*:\s*([0-9.]+)', caseSensitive: false).allMatches(cleanData);
+    // El ESP32 manda valores que pueden ser negativos (ej. "D:-0.026", "P:-0.3"),
+    // por lo que el signo "-" debe ser parte del valor capturado.
+    final phMatches = RegExp(r'(?:Ph|PH|ph)\s*:\s*(-?[0-9.]+)', caseSensitive: false).allMatches(cleanData);
     if (phMatches.isNotEmpty && phMatches.last.group(1) != null) {
       phActual = phMatches.last.group(1)!;
     }
 
-    final tempMatches = RegExp(r'(?:Temp|Temperatura|T)\s*:\s*([0-9.]+\s*°?[CC]?)', caseSensitive: false).allMatches(cleanData);
+    final tempMatches = RegExp(r'(?:Temp|Temperatura|T)\s*:\s*(-?[0-9.]+\s*°?[CC]?)', caseSensitive: false).allMatches(cleanData);
     if (tempMatches.isNotEmpty && tempMatches.last.group(1) != null) {
       temperaturaActual = tempMatches.last.group(1)!;
     }
 
-    final densMatches = RegExp(r'(?:Densidad|Dens|Agua|D)\s*:\s*([0-9.]+%?)', caseSensitive: false).allMatches(cleanData);
+    // "D" (Densidad) es el valor a mostrar. "P" (Peso) llega en la misma trama
+    // pero se ignora deliberadamente: el ESP32 ya usa P para calcular D internamente.
+    final densMatches = RegExp(r'(?:Densidad|Dens|Agua|D)\s*:\s*(-?[0-9.]+%?)', caseSensitive: false).allMatches(cleanData);
     if (densMatches.isNotEmpty && densMatches.last.group(1) != null) {
       densidadActual = densMatches.last.group(1)!;
     }
