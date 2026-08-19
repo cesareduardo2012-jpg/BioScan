@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'app_theme.dart';
 
 class BetaBluetoothScreen extends StatefulWidget {
   const BetaBluetoothScreen({super.key});
@@ -131,10 +132,10 @@ class _BetaBluetoothScreenState extends State<BetaBluetoothScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).extension<BioScanColors>()!;
     return Scaffold(
       appBar: AppBar(
         title: const Text("Beta BLE Scanner"),
-        backgroundColor: Colors.orange,
         actions: [
           if (_connectedDevice != null)
             IconButton(icon: const Icon(Icons.bluetooth_disabled), onPressed: _disconnectDevice)
@@ -150,7 +151,7 @@ class _BetaBluetoothScreenState extends State<BetaBluetoothScreen> {
                 icon: Icon(_isScanning ? Icons.stop : Icons.search),
                 label: Text(_isScanning ? "Detener Escaneo" : "Buscar Dispositivos"),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _isScanning ? Colors.red : Colors.orange,
+                  backgroundColor: _isScanning ? colors.alert : colors.brand,
                   foregroundColor: Colors.white,
                 ),
               ),
