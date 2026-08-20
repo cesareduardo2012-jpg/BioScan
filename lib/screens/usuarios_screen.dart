@@ -621,9 +621,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      _operatorUser!.nombre,
-                                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                    Flexible(
+                                      child: Text(
+                                        _operatorUser!.nombre,
+                                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                     const SizedBox(width: 8),
                                     Container(

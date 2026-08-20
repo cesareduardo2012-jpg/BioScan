@@ -377,4 +377,32 @@ void main() {
       expect(hasIndexCliente, isTrue);
     });
   });
+
+  group('Pruebas de Flujo de Medición BLE (BluetoothManager)', () {
+    test('Mantiene isMeasurementActive en false por defecto y no procesa datos hasta startMeasurement', () {
+      final bt = BluetoothManager.instance;
+      bt.resetMeasurement();
+
+      expect(bt.isMeasurementActive, isFalse);
+      expect(bt.phActual, equals("N/D"));
+      expect(bt.temperaturaActual, equals("N/D"));
+      expect(bt.densidadActual, equals("N/D"));
+
+      // Iniciar medición y parsear datos de prueba
+      bt.startMeasurement();
+      expect(bt.isMeasurementActive, isTrue);
+
+      bt.parseIncomingData("PH: 6.75, T: 22.3, P: -0.3, D: 1.028");
+      expect(bt.phActual, equals("6.75"));
+      expect(bt.temperaturaActual, equals("22.3"));
+      expect(bt.densidadActual, equals("1.028"));
+
+      // Reiniciar medición limpia los valores proyectados
+      bt.resetMeasurement();
+      expect(bt.isMeasurementActive, isFalse);
+      expect(bt.phActual, equals("N/D"));
+      expect(bt.temperaturaActual, equals("N/D"));
+      expect(bt.densidadActual, equals("N/D"));
+    });
+  });
 }

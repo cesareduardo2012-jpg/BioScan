@@ -55,14 +55,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final btManager = BluetoothManager.instance;
     final isConnected = btManager.connectedDevice != null;
+    final isMeasurementActive = btManager.isMeasurementActive;
 
-    final ph = btManager.phActual;
-    final temp = btManager.temperaturaActual;
-    final densidad = btManager.densidadActual;
+    final ph = isMeasurementActive ? btManager.phActual : "N/D";
+    final temp = isMeasurementActive ? btManager.temperaturaActual : "N/D";
+    final densidad = isMeasurementActive ? btManager.densidadActual : "N/D";
 
     final hasGanaderos = widget.ganaderos.isNotEmpty;
     final selectedGanadero = widget.ganaderos.where((ganadero) => ganadero.id == widget.selectedGanaderoId).cast<Ganadero?>().firstOrNull;
-    final canRegister = isConnected && selectedGanadero != null;
+    final canRegister = isConnected && isMeasurementActive && selectedGanadero != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -141,7 +142,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  isConnected ? 'Recibiendo flujo de datos BLE en tiempo real' : 'Presiona buscar para conectar al sensor ESP32',
+                  !isConnected
+                      ? 'Presiona buscar para conectar al sensor ESP32'
+                      : (isMeasurementActive
+                          ? 'Recibiendo flujo de datos BLE en tiempo real'
+                          : 'Sensor listo. Presiona "Comenzar la medición" para iniciar.'),
                 ),
                 trailing: isConnected
                     ? IconButton(
@@ -166,6 +171,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
+                )
+              else if (!isMeasurementActive)
+                ElevatedButton.icon(
+                  onPressed: () => _showSensorWarningDialog(context, btManager),
+                  icon: const Icon(Icons.play_arrow_rounded, size: 26),
+                  label: const Text(
+                    'Comenzar la medición',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    backgroundColor: const Color(0xFF008C83),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 3,
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => btManager.resetMeasurement(),
+                  icon: const Icon(Icons.refresh, size: 20),
+                  label: const Text('Reiniciar Lectura / Detener Proyección'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 44),
+                    foregroundColor: const Color(0xFF008C83),
+                    side: const BorderSide(color: Color(0xFF008C83)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                 ),
 
               const SizedBox(height: 20),
@@ -174,11 +207,11 @@ class _HomeScreenState extends State<HomeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  Expanded(child: SensorBox(label: 'pH', value: ph, active: isConnected)),
+                  Expanded(child: SensorBox(label: 'pH', value: ph, active: isConnected && isMeasurementActive)),
                   const SizedBox(width: 8),
-                  Expanded(child: SensorBox(label: 'Temperatura', value: temp, active: isConnected)),
+                  Expanded(child: SensorBox(label: 'Temperatura', value: temp, active: isConnected && isMeasurementActive)),
                   const SizedBox(width: 8),
-                  Expanded(child: SensorBox(label: 'Densidad', value: densidad, active: isConnected)),
+                  Expanded(child: SensorBox(label: 'Densidad', value: densidad, active: isConnected && isMeasurementActive)),
                 ],
               ),
 
@@ -228,6 +261,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
                             // Sincronizar y respaldar en tiempo real a Supabase Nube
                             ServiceLocator.syncService.syncPendingRecords();
+
+                            // Reiniciar medición para dejar listo el escáner para la siguiente muestra
+                            btManager.resetMeasurement();
 
                             if (!context.mounted) return;
 
@@ -280,6 +316,45 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showSensorWarningDialog(BuildContext context, BluetoothManager btManager) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+            SizedBox(width: 10),
+            Text('Aviso de Preparación', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: const Text(
+          'Asegúrate que los sensores estén dentro del recipiente de BIOSCAN',
+          style: TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF008C83),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Entendido, Comenzar'),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              btManager.startMeasurement();
+            },
+          ),
+        ],
       ),
     );
   }

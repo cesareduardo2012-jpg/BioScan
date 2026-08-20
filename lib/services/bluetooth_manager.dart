@@ -18,6 +18,8 @@ class BluetoothManager extends ChangeNotifier {
   String temperaturaActual = "N/D";
   String densidadActual = "N/D";
 
+  bool isMeasurementActive = false;
+
   void init() {
     FlutterBluePlus.scanResults.listen((results) {
       scanResults = results;
@@ -43,6 +45,7 @@ class BluetoothManager extends ChangeNotifier {
     scanResults.clear();
     receivedData = "";
     latestRawLine = "";
+    isMeasurementActive = false;
     phActual = "N/D";
     temperaturaActual = "N/D";
     densidadActual = "N/D";
@@ -63,6 +66,10 @@ class BluetoothManager extends ChangeNotifier {
     try {
       await device.connect();
       connectedDevice = device;
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
       notifyListeners();
       _discoverServices(device);
     } catch (e) {
@@ -77,11 +84,30 @@ class BluetoothManager extends ChangeNotifier {
       connectedDevice = null;
       receivedData = "";
       latestRawLine = "";
+      isMeasurementActive = false;
       phActual = "N/D";
       temperaturaActual = "N/D";
       densidadActual = "N/D";
       notifyListeners();
     }
+  }
+
+  /// Inicia activamente la medición y el procesamiento proyectado de datos
+  void startMeasurement() {
+    isMeasurementActive = true;
+    if (receivedData.isNotEmpty) {
+      parseIncomingData(receivedData);
+    }
+    notifyListeners();
+  }
+
+  /// Reinicia la medición y oculta la proyección hasta una nueva confirmación
+  void resetMeasurement() {
+    isMeasurementActive = false;
+    phActual = "N/D";
+    temperaturaActual = "N/D";
+    densidadActual = "N/D";
+    notifyListeners();
   }
 
   void _discoverServices(BluetoothDevice device) async {
@@ -127,7 +153,9 @@ class BluetoothManager extends ChangeNotifier {
       receivedData = receivedData.substring(receivedData.length - 1000);
     }
 
-    parseIncomingData(receivedData);
+    if (isMeasurementActive) {
+      parseIncomingData(receivedData);
+    }
     notifyListeners();
   }
 
