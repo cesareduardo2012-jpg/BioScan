@@ -3,6 +3,7 @@ import '../models/dispositivo.dart';
 
 abstract class DispositivoRepository {
   Future<List<Dispositivo>> getDispositivos();
+  Future<Dispositivo?> getDispositivoById(String id);
   Future<List<Dispositivo>> getDispositivosByCliente(String clienteId);
   Future<void> insertDispositivo(Dispositivo dispositivo);
   Future<void> updateDispositivo(Dispositivo dispositivo);
@@ -16,6 +17,9 @@ class DispositivoRepositoryImpl implements DispositivoRepository {
 
   @override
   Future<List<Dispositivo>> getDispositivos() => _dispositivoDao.getAll();
+
+  @override
+  Future<Dispositivo?> getDispositivoById(String id) => _dispositivoDao.getById(id);
 
   @override
   Future<List<Dispositivo>> getDispositivosByCliente(String clienteId) => _dispositivoDao.getByClienteId(clienteId);

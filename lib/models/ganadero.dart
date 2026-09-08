@@ -80,7 +80,7 @@ class Ganadero {
   factory Ganadero.fromMap(Map<String, dynamic> map) {
     return Ganadero(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? '00000000-0000-0000-0000-000000000001',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '00000000-0000-0000-0000-000000000001',
       nombre: map['nombre']?.toString() ?? '',
       apellidoPaterno: (map['apellido_paterno'] ?? map['apellidoPaterno'])?.toString() ?? '',
       apellidoMaterno: (map['apellido_materno'] ?? map['apellidoMaterno'])?.toString() ?? '',

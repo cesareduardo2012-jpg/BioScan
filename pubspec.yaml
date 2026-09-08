@@ -46,6 +46,9 @@ dependencies:
   printing: ^5.13.1
   crypto: ^3.0.6
   supabase_flutter: ^2.8.0
+  share_plus: ^13.3.0
+  print_bluetooth_thermal: ^1.2.4
+  esc_pos_utils_plus: ^2.0.4
 
 dev_dependencies:
   flutter_test:

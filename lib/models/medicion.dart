@@ -11,6 +11,7 @@ class Medicion {
   final String observaciones;
   final bool sincronizado;
   final String? fechaSincronizacion;
+  final String? pdfPath;
 
   const Medicion({
     required this.id,
@@ -25,6 +26,7 @@ class Medicion {
     String? observaciones,
     bool? sincronizado,
     this.fechaSincronizacion,
+    this.pdfPath,
   })  : clienteId = clienteId ?? '00000000-0000-0000-0000-000000000001',
         densidad = agua,
         observaciones = observaciones ?? '',
@@ -47,6 +49,7 @@ class Medicion {
     String? observaciones,
     bool? sincronizado,
     String? fechaSincronizacion,
+    String? pdfPath,
   }) {
     return Medicion(
       id: id ?? this.id,
@@ -61,6 +64,7 @@ class Medicion {
       observaciones: observaciones ?? this.observaciones,
       sincronizado: sincronizado ?? this.sincronizado,
       fechaSincronizacion: fechaSincronizacion ?? this.fechaSincronizacion,
+      pdfPath: pdfPath ?? this.pdfPath,
     );
   }
 
@@ -78,6 +82,7 @@ class Medicion {
       observaciones: map['observaciones']?.toString() ?? '',
       sincronizado: map['sincronizado'] == 1 || map['sincronizado'] == true,
       fechaSincronizacion: (map['fecha_sincronizacion'] ?? map['fechaSincronizacion'])?.toString(),
+      pdfPath: (map['pdf_path'] ?? map['pdfPath'])?.toString(),
     );
   }
 
@@ -94,5 +99,6 @@ class Medicion {
         'observaciones': observaciones,
         'sincronizado': sincronizado ? 1 : 0,
         'fecha_sincronizacion': fechaSincronizacion,
+        'pdf_path': pdfPath,
       };
 }

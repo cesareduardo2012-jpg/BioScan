@@ -9,6 +9,12 @@ import 'package:scanner_leche_app/models/medicion.dart';
 import 'package:scanner_leche_app/models/usuario.dart';
 import 'package:scanner_leche_app/services/auth_service.dart';
 import 'package:scanner_leche_app/services/bluetooth_manager.dart';
+import 'package:scanner_leche_app/services/hardware_simulator_service.dart';
+import 'package:flutter/material.dart';
+import 'package:scanner_leche_app/screens/configurar_impresora_screen.dart';
+import 'package:scanner_leche_app/screens/reporte_pdf_screen.dart';
+import 'package:scanner_leche_app/services/pdf_report_service.dart';
+import 'package:scanner_leche_app/services/thermal_printer_service.dart';
 import 'package:scanner_leche_app/utils/password_hasher.dart';
 import 'package:scanner_leche_app/utils/service_locator.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -352,12 +358,12 @@ void main() {
     });
   });
 
-  group('Pruebas de Migración de Base de Datos v2 a v4', () {
-    test('Migra la estructura v2 a v4 agregando columnas de autenticación en usuarios e índices B-Tree de rendimiento', () async {
+  group('Pruebas de Migración de Base de Datos v2 a v6', () {
+    test('Migra la estructura v2 a v6 agregando columnas de autenticación en usuarios, cliente_id y pdf_path en mediciones', () async {
       final db = ServiceLocator.database.db;
 
-      // Ejecutar migrador v2 -> v4
-      await DatabaseMigrator.migrate(db, 2, 4);
+      // Ejecutar migrador v2 -> v6
+      await DatabaseMigrator.migrate(db, 2, 6);
 
       final usuariosInfo = await db.rawQuery("PRAGMA table_info(usuarios)");
       final hasUsername = usuariosInfo.any((c) => c['name'] == 'username');
@@ -370,7 +376,12 @@ void main() {
 
       final medicionesInfo = await db.rawQuery("PRAGMA table_info(mediciones)");
       final hasUsuarioId = medicionesInfo.any((c) => c['name'] == 'usuario_id');
+      final hasClienteId = medicionesInfo.any((c) => c['name'] == 'cliente_id');
+      final hasPdfPath = medicionesInfo.any((c) => c['name'] == 'pdf_path');
+
       expect(hasUsuarioId, isTrue);
+      expect(hasClienteId, isTrue);
+      expect(hasPdfPath, isTrue);
 
       final indexes = await db.rawQuery("PRAGMA index_list(usuarios)");
       final hasIndexCliente = indexes.any((idx) => idx['name'] == 'idx_usuarios_cliente_id');
@@ -378,9 +389,168 @@ void main() {
     });
   });
 
+  group('Pruebas de Persistencia y Generación de Reportes PDF', () {
+    test('Genera y persiste el archivo PDF localmente asociando su ruta a la medición', () async {
+      final ganadero = const Ganadero(
+        id: 'g-pdf-test',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        nombre: 'Roberto',
+        apellidoPaterno: 'Mendoza',
+        apellidoMaterno: 'Silva',
+        rancho: 'Rancho La Esmeralda',
+        tel: '3399887766',
+      );
+
+      await ServiceLocator.ganaderoRepository.insertGanadero(ganadero);
+
+      final medicion = const Medicion(
+        id: 'm-pdf-001',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        ganaderoId: 'g-pdf-test',
+        ph: '6.68',
+        agua: '1.030',
+        temperatura: '21.5°C',
+        fecha: '2026-08-26T14:30:00.000',
+        observaciones: 'Muestra conforme',
+      );
+
+      final file = await PdfReportService.saveMeasurementReportPdf(
+        medicion: medicion,
+        ganadero: ganadero,
+      );
+
+      expect(await file.exists(), isTrue);
+      expect(file.path, contains('reporte_bioscan_Roberto_m-pdf-00.pdf'));
+
+      final medicionWithPdf = medicion.copyWith(pdfPath: file.path);
+      await ServiceLocator.medicionRepository.insertMedicion(medicionWithPdf);
+
+      final retrieved = await ServiceLocator.medicionRepository.getMedicionById('m-pdf-001');
+      expect(retrieved, isNotNull);
+      expect(retrieved!.pdfPath, equals(file.path));
+
+      final bytes = await PdfReportService.loadOrGeneratePdfBytes(
+        medicion: retrieved,
+        ganadero: ganadero,
+      );
+      expect(bytes, isNotEmpty);
+    });
+
+    test('Genera reporte PDF para muestra adulterada con agua (densidad baja) y alerta crítica', () async {
+      final ganadero = const Ganadero(
+        id: 'g-pdf-adulterada',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        nombre: 'Carlos',
+        apellidoPaterno: 'Gómez',
+        apellidoMaterno: 'Hernández',
+        rancho: 'Rancho San Pedro',
+        tel: '3311223344',
+      );
+
+      final medicionConAgua = const Medicion(
+        id: 'm-pdf-agua-002',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        ganaderoId: 'g-pdf-adulterada',
+        ph: '6.65',
+        agua: '1.023', // Densidad < 1.028 indica agua añadida
+        temperatura: '20.0°C',
+        fecha: '2026-08-26T15:00:00.000',
+        observaciones: 'Sospecha de aguado',
+      );
+
+      final pdfFile = await PdfReportService.saveMeasurementReportPdf(
+        medicion: medicionConAgua,
+        ganadero: ganadero,
+      );
+
+      expect(await pdfFile.exists(), isTrue);
+      expect(await pdfFile.length(), greaterThan(1000));
+    });
+
+    test('Genera reporte PDF para muestras con acidez láctica y alcalinidad anormal', () async {
+      final ganadero = const Ganadero(
+        id: 'g-pdf-acido',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        nombre: 'Lucía',
+        apellidoPaterno: 'Vargas',
+        apellidoMaterno: 'Cruz',
+        rancho: 'Rancho Bellavista',
+        tel: '3355667788',
+      );
+
+      // Muestra ácida
+      final medicionAcida = const Medicion(
+        id: 'm-pdf-acida-003',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        ganaderoId: 'g-pdf-acido',
+        ph: '6.35', // pH ácido < 6.50
+        agua: '1.031',
+        temperatura: '28.0°C',
+        fecha: '2026-08-26T16:00:00.000',
+        observaciones: 'Sin refrigeración por 4 horas',
+      );
+
+      final bytesAcida = await PdfReportService.generateMeasurementReport(
+        medicion: medicionAcida,
+        ganadero: ganadero,
+      );
+      expect(bytesAcida, isNotEmpty);
+
+      // Muestra alcalina
+      final medicionAlcalina = medicionAcida.copyWith(
+        id: 'm-pdf-alc-004',
+        ph: '6.95', // pH alcalino > 6.80
+      );
+
+      final bytesAlcalina = await PdfReportService.generateMeasurementReport(
+        medicion: medicionAlcalina,
+        ganadero: ganadero,
+      );
+      expect(bytesAlcalina, isNotEmpty);
+    });
+
+    testWidgets('ReportePdfScreen renderiza AppBar superior con botones de impresión y compartir sin barra morada inferior', (tester) async {
+      final ganadero = const Ganadero(
+        id: 'g-screen-test',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        nombre: 'Fernando',
+        apellidoPaterno: 'Torres',
+        apellidoMaterno: 'Vega',
+        rancho: 'Rancho Las Palmas',
+        tel: '3322114455',
+      );
+
+      final medicion = const Medicion(
+        id: 'm-screen-001',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        ganaderoId: 'g-screen-test',
+        ph: '6.70',
+        agua: '1.029',
+        temperatura: '19.5°C',
+        fecha: '2026-08-26T17:00:00.000',
+        observaciones: 'Prueba de pantalla',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReportePdfScreen(
+            medicion: medicion,
+            ganadero: ganadero,
+          ),
+        ),
+      );
+
+      expect(find.text('Reporte Oficial BioScan'), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      expect(find.byIcon(Icons.print_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.share), findsOneWidget);
+    });
+  });
+
   group('Pruebas de Flujo de Medición BLE (BluetoothManager)', () {
     test('Mantiene isMeasurementActive en false por defecto y no procesa datos hasta startMeasurement', () {
       final bt = BluetoothManager.instance;
+      bt.setSimulationMode(false);
       bt.resetMeasurement();
 
       expect(bt.isMeasurementActive, isFalse);
@@ -403,6 +573,218 @@ void main() {
       expect(bt.phActual, equals("N/D"));
       expect(bt.temperaturaActual, equals("N/D"));
       expect(bt.densidadActual, equals("N/D"));
+    });
+  });
+
+  group('Pruebas de Servicio Simulador y Modo Simulación (HardwareSimulatorService)', () {
+    test('Genera lecturas realistas dentro de los rangos físico-químicos definidos (Densidad 1.028-1.033, Temp 18-23°C, pH 6.5-6.8)', () {
+      final simService = HardwareSimulatorService.instance;
+      for (int i = 0; i < 20; i++) {
+        final reading = simService.generateReading();
+        final dens = double.parse(reading.densidad);
+        final ph = double.parse(reading.ph);
+        final temp = double.parse(reading.temperatura.replaceAll('°C', ''));
+
+        expect(dens, inInclusiveRange(1.028, 1.033));
+        expect(ph, inInclusiveRange(6.50, 6.80));
+        expect(temp, inInclusiveRange(18.0, 23.0));
+        expect(reading.batteryLevel, equals(100));
+        expect(reading.rawLine, contains('Ph: '));
+        expect(reading.rawLine, contains('T: '));
+        expect(reading.rawLine, contains('D: '));
+      }
+    });
+
+    test('Controla el ciclo de vida completo de timers con start y stop sin fugas', () {
+      final simService = HardwareSimulatorService.instance;
+      expect(simService.isRunning, isFalse);
+
+      simService.start();
+      expect(simService.isRunning, isTrue);
+
+      simService.stop();
+      expect(simService.isRunning, isFalse);
+    });
+
+    test('BluetoothManager emula conexión a BioScan-Demo y emite datos en Modo Simulación', () {
+      final bt = BluetoothManager.instance;
+      bt.setSimulationMode(true);
+
+      expect(bt.isSimulationMode, isTrue);
+      expect(bt.connectedDevice, isNotNull);
+      expect(bt.connectedDevice!.remoteId.str, equals('BioScan-Demo'));
+
+      bt.startMeasurement();
+      expect(bt.isMeasurementActive, isTrue);
+      expect(bt.densidadActual, isNot(equals("N/D")));
+      expect(bt.phActual, isNot(equals("N/D")));
+      expect(bt.temperaturaActual, isNot(equals("N/D")));
+
+      bt.resetMeasurement();
+      expect(bt.isMeasurementActive, isFalse);
+
+      bt.setSimulationMode(false);
+      expect(bt.isSimulationMode, isFalse);
+      expect(bt.connectedDevice, isNull);
+    });
+  });
+
+  group('Pruebas de Deserialización y Sincronización Supabase', () {
+    test('Ganadero.fromMap mapea correctamente los campos cuenta_id y telefono provenientes de Supabase', () {
+      final mapFromSupabase = {
+        'id': 'g-supa-01',
+        'cuenta_id': 'cliente-cloud-123',
+        'nombre': 'Esteban',
+        'apellido_paterno': 'Quintero',
+        'apellido_materno': 'Vargas',
+        'rancho': 'Rancho El Paraíso',
+        'telefono': '3311223344',
+        'fecha_registro': '2026-08-26T12:00:00.000',
+      };
+
+      final ganadero = Ganadero.fromMap(mapFromSupabase);
+      expect(ganadero.id, equals('g-supa-01'));
+      expect(ganadero.clienteId, equals('cliente-cloud-123'));
+      expect(ganadero.nombre, equals('Esteban'));
+      expect(ganadero.tel, equals('3311223344'));
+      expect(ganadero.rancho, equals('Rancho El Paraíso'));
+    });
+
+    test('SyncService.syncAll ejecuta sin excepciones cuando Supabase está activo', () async {
+      await ServiceLocator.syncService.syncAll();
+      expect(true, isTrue);
+    });
+  });
+
+  group('Pruebas de Impresión Térmica Bluetooth (ThermalPrinterService y Formateo 58 mm)', () {
+    test('Guarda, recupera y limpia la configuración de impresora en SharedPreferences', () async {
+      final service = ThermalPrinterService.instance;
+      await service.clearConfiguredPrinter();
+
+      var configured = await service.getConfiguredPrinter();
+      expect(configured, isNull);
+
+      await service.savePrinter(mac: '00:11:22:33:44:55', name: 'Impresora Goojprt 58');
+
+      configured = await service.getConfiguredPrinter();
+      expect(configured, isNotNull);
+      expect(configured!['mac'], equals('00:11:22:33:44:55'));
+      expect(configured['name'], equals('Impresora Goojprt 58'));
+
+      await service.clearConfiguredPrinter();
+      configured = await service.getConfiguredPrinter();
+      expect(configured, isNull);
+    });
+
+    test('Genera ticket de prueba ESC/POS con encabezado BioScan y mensaje oficial', () async {
+      final service = ThermalPrinterService.instance;
+      final bytes = await service.generateTestTicketBytes(
+        fecha: DateTime(2026, 9, 8, 10, 30),
+      );
+
+      expect(bytes, isNotEmpty);
+      final ticketText = String.fromCharCodes(bytes);
+
+      expect(ticketText, contains('=== BIOSCAN ==='));
+      expect(ticketText, contains('IMPRESION DE PRUEBA'));
+      expect(ticketText, contains('Impresora lista para usar'));
+      expect(ticketText, contains('Ticket 58 mm'));
+    });
+
+    test('Genera ticket oficial para muestra conforme (LECHE APTA / OPTIMAS CONDICIONES)', () async {
+      final service = ThermalPrinterService.instance;
+      final ganadero = const Ganadero(
+        id: 'g-ticket-apta',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        nombre: 'Mateo',
+        apellidoPaterno: 'Navarro',
+        apellidoMaterno: 'Ríos',
+        rancho: 'Rancho Santa Clara',
+        tel: '3311223344',
+      );
+
+      final medicionApta = const Medicion(
+        id: 'm-ticket-001',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        ganaderoId: 'g-ticket-apta',
+        ph: '6.68',
+        agua: '1.030', // Densidad normal óptima
+        temperatura: '20.0 C',
+        fecha: '2026-09-08T11:00:00.000',
+      );
+
+      final bytes = await service.generateMeasurementTicketBytes(
+        medicion: medicionApta,
+        ganadero: ganadero,
+      );
+
+      expect(bytes, isNotEmpty);
+      final ticketText = String.fromCharCodes(bytes);
+
+      expect(ticketText, contains('=== BIOSCAN ==='));
+      expect(ticketText, contains('[ LECHE APTA ]'));
+      expect(ticketText, contains('OPTIMAS CONDICIONES'));
+      expect(ticketText, contains('Presencia de agua: NO'));
+      expect(ticketText, contains('Mateo Navarro'));
+      expect(ticketText, contains('Densidad'));
+      expect(ticketText, contains('1.030'));
+      expect(ticketText, contains('pH'));
+      expect(ticketText, contains('6.68'));
+      expect(ticketText, contains('OK'));
+    });
+
+    test('Genera ticket oficial para muestra adulterada con agua (LECHE NO APTA / ALERTA)', () async {
+      final service = ThermalPrinterService.instance;
+      final ganadero = const Ganadero(
+        id: 'g-ticket-agua',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        nombre: 'Gonzalo',
+        apellidoPaterno: 'Mora',
+        apellidoMaterno: 'Castillo',
+        rancho: 'Rancho El Encanto',
+        tel: '3399881122',
+      );
+
+      final medicionAgua = const Medicion(
+        id: 'm-ticket-002',
+        clienteId: DatabaseMigrator.defaultClienteId,
+        ganaderoId: 'g-ticket-agua',
+        ph: '6.65',
+        agua: '1.022', // Densidad < 1.028 indica adulteración con agua
+        temperatura: '21.0 C',
+        fecha: '2026-09-08T12:00:00.000',
+      );
+
+      final bytes = await service.generateMeasurementTicketBytes(
+        medicion: medicionAgua,
+        ganadero: ganadero,
+      );
+
+      expect(bytes, isNotEmpty);
+      final ticketText = String.fromCharCodes(bytes);
+
+      expect(ticketText, contains('=== BIOSCAN ==='));
+      expect(ticketText, contains('[ LECHE NO APTA ]'));
+      expect(ticketText, contains('ADULTERACION CON AGUA'));
+      expect(ticketText, contains('Presencia de agua: SI'));
+      expect(ticketText, contains('ALERTA'));
+    });
+  });
+
+  group('Pruebas de Widgets de Impresión Térmica y Configuración', () {
+    testWidgets('ConfigurarImpresoraScreen renderiza título, tarjeta de estado y botón de escaneo', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: ConfigurarImpresoraScreen(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(find.text('Configurar Impresora'), findsOneWidget);
+      expect(find.text('DISPOSITIVOS BLUETOOTH DETECTADOS'), findsOneWidget);
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
     });
   });
 }

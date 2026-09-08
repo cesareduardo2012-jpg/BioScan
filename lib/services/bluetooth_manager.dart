@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'hardware_simulator_service.dart';
 
 class BluetoothManager extends ChangeNotifier {
   BluetoothManager._();
@@ -19,6 +21,7 @@ class BluetoothManager extends ChangeNotifier {
   String densidadActual = "N/D";
 
   bool isMeasurementActive = false;
+  bool isSimulationMode = false;
 
   void init() {
     FlutterBluePlus.scanResults.listen((results) {
@@ -29,9 +32,61 @@ class BluetoothManager extends ChangeNotifier {
       isScanning = state;
       notifyListeners();
     });
+
+    _loadSimulationPreference();
+  }
+
+  Future<void> _loadSimulationPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedSim = prefs.getBool('bioscan_simulation_mode') ?? false;
+      if (savedSim) {
+        setSimulationMode(true);
+      }
+    } catch (e) {
+      debugPrint("Error al cargar preferencia de simulación: $e");
+    }
+  }
+
+  /// Activa o desactiva el Modo Simulador de Hardware (BioScan-Demo)
+  void setSimulationMode(bool enabled) {
+    if (isSimulationMode == enabled && connectedDevice != null) return;
+    isSimulationMode = enabled;
+
+    try {
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setBool('bioscan_simulation_mode', enabled);
+      });
+    } catch (_) {}
+
+    if (enabled) {
+      // Desconectar hardware físico si estuviera conectado
+      if (connectedDevice != null && connectedDevice!.remoteId.str != 'BioScan-Demo') {
+        connectedDevice!.disconnect().catchError((_) {});
+      }
+      // Conectar cliente simulador BioScan-Demo
+      connectedDevice = BluetoothDevice.fromId('BioScan-Demo');
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
+      latestRawLine = "SIMULADOR CONECTADO (BioScan-Demo)";
+      notifyListeners();
+    } else {
+      // Apagado limpio inmediato del servicio y timers
+      HardwareSimulatorService.instance.stop();
+      connectedDevice = null;
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
+      latestRawLine = "";
+      notifyListeners();
+    }
   }
 
   Future<void> requestPermissions() async {
+    if (isSimulationMode) return;
     await [
       Permission.bluetooth,
       Permission.bluetoothScan,
@@ -41,6 +96,7 @@ class BluetoothManager extends ChangeNotifier {
   }
 
   void startScan() async {
+    if (isSimulationMode) return;
     await requestPermissions();
     scanResults.clear();
     receivedData = "";
@@ -58,10 +114,12 @@ class BluetoothManager extends ChangeNotifier {
   }
 
   void stopScan() async {
+    if (isSimulationMode) return;
     await FlutterBluePlus.stopScan();
   }
 
   void connectToDevice(BluetoothDevice device, {required VoidCallback onError}) async {
+    if (isSimulationMode) return;
     stopScan();
     try {
       await device.connect();
@@ -79,6 +137,18 @@ class BluetoothManager extends ChangeNotifier {
   }
 
   void disconnectDevice() async {
+    if (isSimulationMode) {
+      HardwareSimulatorService.instance.stop();
+      connectedDevice = null;
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
+      latestRawLine = "";
+      notifyListeners();
+      return;
+    }
+
     if (connectedDevice != null) {
       await connectedDevice!.disconnect();
       connectedDevice = null;
@@ -92,11 +162,24 @@ class BluetoothManager extends ChangeNotifier {
     }
   }
 
-  /// Inicia activamente la medición y el procesamiento proyectado de datos
+  /// Inicia activamente la medición y el procesamiento proyectado de datos (real o simulado)
   void startMeasurement() {
     isMeasurementActive = true;
-    if (receivedData.isNotEmpty) {
-      parseIncomingData(receivedData);
+    if (isSimulationMode) {
+      HardwareSimulatorService.instance.start(
+        interval: const Duration(milliseconds: 1500),
+        onData: (reading) {
+          phActual = reading.ph;
+          temperaturaActual = reading.temperatura;
+          densidadActual = reading.densidad;
+          latestRawLine = reading.rawLine;
+          notifyListeners();
+        },
+      );
+    } else {
+      if (receivedData.isNotEmpty) {
+        parseIncomingData(receivedData);
+      }
     }
     notifyListeners();
   }
@@ -104,6 +187,9 @@ class BluetoothManager extends ChangeNotifier {
   /// Reinicia la medición y oculta la proyección hasta una nueva confirmación
   void resetMeasurement() {
     isMeasurementActive = false;
+    if (isSimulationMode) {
+      HardwareSimulatorService.instance.stop();
+    }
     phActual = "N/D";
     temperaturaActual = "N/D";
     densidadActual = "N/D";

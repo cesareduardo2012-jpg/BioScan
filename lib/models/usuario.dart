@@ -86,7 +86,7 @@ class Usuario {
 
     return Usuario(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? '',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '',
       username: fallbackUsername,
       nombre: map['nombre']?.toString() ?? '',
       correo: map['correo']?.toString() ?? '',
