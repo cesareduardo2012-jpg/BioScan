@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/analisis_leche.dart';
@@ -122,6 +123,17 @@ class ThermalPrinterService {
     if (!kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
       return _cachedMac != null;
     }
+    if (!kIsWeb && Platform.isIOS) {
+      final mac = _cachedMac;
+      if (mac != null && mac.isNotEmpty) {
+        try {
+          return BluetoothDevice.fromId(mac).isConnected;
+        } catch (_) {
+          return false;
+        }
+      }
+      return false;
+    }
     try {
       return await PrintBluetoothThermal.connectionStatus;
     } catch (_) {
@@ -152,6 +164,19 @@ class ThermalPrinterService {
       throw const ThermalPrinterException('El Bluetooth está desactivado. Actívelo para conectar la impresora.');
     }
 
+    if (!kIsWeb && Platform.isIOS) {
+      // En iOS nos aseguramos de que el periférico BLE responde
+      try {
+        final device = BluetoothDevice.fromId(targetMac);
+        if (device.isDisconnected) {
+          await device.connect(timeout: const Duration(seconds: 8), autoConnect: false);
+        }
+        return true;
+      } catch (e) {
+        throw ThermalPrinterException('No fue posible conectar con la impresora Bluetooth ($targetMac). Verifique que esté encendida.');
+      }
+    }
+
     debugPrint('[THERMAL PRINTER] Conectando a $targetMac...');
     try {
       final success = await PrintBluetoothThermal.connect(macPrinterAddress: targetMac)
@@ -176,6 +201,21 @@ class ThermalPrinterService {
     if (!kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
       return;
     }
+    if (!kIsWeb && Platform.isIOS) {
+      final configured = await getConfiguredPrinter();
+      final mac = configured?['mac'] ?? _cachedMac;
+      if (mac != null && mac.isNotEmpty) {
+        try {
+          final device = BluetoothDevice.fromId(mac);
+          await device.disconnect();
+        } catch (_) {}
+      }
+      try {
+        await PrintBluetoothThermal.disconnect;
+      } catch (_) {}
+      debugPrint('[THERMAL PRINTER iOS] Desconectado.');
+      return;
+    }
     try {
       await PrintBluetoothThermal.disconnect;
       debugPrint('[THERMAL PRINTER] Desconectado.');
@@ -193,6 +233,9 @@ class ThermalPrinterService {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
+
+    // Inicializar impresora con ESC @
+    bytes += generator.reset();
 
     final dateNow = fecha ?? DateTime.now();
     final dateStr = '${dateNow.day.toString().padLeft(2, '0')}/${dateNow.month.toString().padLeft(2, '0')}/${dateNow.year} '
@@ -266,6 +309,9 @@ class ThermalPrinterService {
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
+    // Inicializar impresora con ESC @
+    bytes += generator.reset();
+
     final analysis = AnalisisLeche.evaluate(medicion);
 
     // Parsear fecha
@@ -291,7 +337,7 @@ class ThermalPrinterService {
       ),
     );
     bytes += generator.text(
-      'LABORATORIO DE CALIDAD DE LECHE',
+      'Confianza en cada gots',
       styles: const PosStyles(align: PosAlign.center, bold: true),
     );
     bytes += generator.text(
@@ -407,7 +453,7 @@ class ThermalPrinterService {
         ? '${analysis.estimatedWaterPct != null ? analysis.estimatedWaterPct!.toStringAsFixed(1) : ''}%'
         : '0.0%';
     final aguaStatus = analysis.hasWaterAdulteration ? 'ALERTA' : 'OK';
-    bytes += generator.text(_format3Cols('Agua añadida', aguaValStr, aguaStatus));
+    bytes += generator.text(_format3Cols('Agua adicionada', aguaValStr, aguaStatus));
 
     bytes += generator.text(
       '--------------------------------',
@@ -436,65 +482,193 @@ class ThermalPrinterService {
 
   /// Imprime el ticket de prueba en la impresora configurada
   Future<void> printTestTicket() async {
-    final configured = await getConfiguredPrinter();
-    if (configured == null) {
-      throw const ThermalPrinterException('No hay ninguna impresora configurada. Por favor vincule una impresora primero.');
-    }
-
-    final isMacOsOrDesktop = !kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows);
-
-    // Generar bytes
     final bytes = await generateTestTicketBytes();
-
-    if (isMacOsOrDesktop) {
-      // En entorno de escritorio/simulador simulamos la salida con éxito para pruebas
-      debugPrint('[THERMAL PRINTER SIMULADO] Impresión de prueba ejecutada exitosamente (${bytes.length} bytes).');
-      return;
-    }
-
-    // Conectar y enviar bytes
-    await connect(mac: configured['mac']);
-    try {
-      final success = await PrintBluetoothThermal.writeBytes(bytes);
-      if (!success) {
-        throw const ThermalPrinterException('No se pudo enviar la información a la impresora.');
-      }
-    } finally {
-      // Dejamos un breve retraso para vaciar el búfer antes de cerrar
-      await Future.delayed(const Duration(milliseconds: 600));
-    }
+    await _sendBytesToPrinter(bytes);
   }
 
   /// Imprime el ticket oficial de medición en la impresora configurada
   Future<void> printMeasurementTicket({
     required Medicion medicion,
     required Ganadero ganadero,
+    DateTime? fecha,
   }) async {
-    final configured = await getConfiguredPrinter();
-    if (configured == null) {
-      throw const ThermalPrinterException('No hay ninguna impresora configurada.');
-    }
-
-    final isMacOsOrDesktop = !kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows);
-
     final bytes = await generateMeasurementTicketBytes(
       medicion: medicion,
       ganadero: ganadero,
+      fecha: fecha,
     );
+    await _sendBytesToPrinter(bytes);
+  }
 
+  /// Enrutador central de impresión: despacha los bytes al canal de comunicación correspondiente
+  Future<void> _sendBytesToPrinter(List<int> bytes) async {
+    final configured = await getConfiguredPrinter();
+    if (configured == null || configured['mac'] == null || configured['mac']!.isEmpty) {
+      throw const ThermalPrinterException('No hay ninguna impresora configurada. Por favor vincule una impresora primero.');
+    }
+    final targetMac = configured['mac']!;
+
+    final isMacOsOrDesktop = !kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows);
     if (isMacOsOrDesktop) {
-      debugPrint('[THERMAL PRINTER SIMULADO] Ticket de medición #${medicion.id} impreso con éxito (${bytes.length} bytes).');
+      debugPrint('[THERMAL PRINTER SIMULADO] Ticket procesado con éxito (${bytes.length} bytes).');
       return;
     }
 
-    await connect(mac: configured['mac']);
+    if (!kIsWeb && Platform.isIOS) {
+      await _printViaBleIos(bytes: bytes, mac: targetMac);
+    } else {
+      await _printViaClassicAndroid(bytes: bytes, mac: targetMac);
+    }
+  }
+
+  /// Impresión BLE robusta para iOS usando FlutterBluePlus
+  Future<void> _printViaBleIos({
+    required List<int> bytes,
+    required String mac,
+  }) async {
+    debugPrint('[THERMAL PRINTER iOS] Preparando impresión BLE hacia $mac (${bytes.length} bytes)...');
+
+    // 1. Liberar cualquier conexión residual previa en el plugin nativo
+    try {
+      await PrintBluetoothThermal.disconnect;
+    } catch (_) {}
+
+    BluetoothDevice? device;
+    try {
+      device = BluetoothDevice.fromId(mac);
+    } catch (e) {
+      throw ThermalPrinterException('Identificador de impresora inválido ($mac): $e');
+    }
+
+    try {
+      // 2. Conectar al periférico BLE
+      debugPrint('[THERMAL PRINTER iOS] Conectando a $mac...');
+      if (device.isDisconnected) {
+        await device.connect(
+          timeout: const Duration(seconds: 10),
+          autoConnect: false,
+        );
+      }
+
+      // 3. Descubrir servicios y características
+      debugPrint('[THERMAL PRINTER iOS] Descubriendo servicios...');
+      final services = await device.discoverServices();
+      debugPrint('[THERMAL PRINTER iOS] Servicios detectados: ${services.length}');
+
+      // 4. Buscar característica de escritura
+      BluetoothCharacteristic? writeChar;
+
+      // UUIDs conocidos de impresoras térmicas ESC/POS
+      const knownWriteUuids = [
+        '49535343-8841-43f4-a8d4-ecbe34729bb3',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+        'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f',
+        '2af1',
+        'ff02',
+        'fff2',
+        'ffe1',
+      ];
+
+      // Prioridad 1: UUIDs estándar de impresoras térmicas
+      for (final service in services) {
+        for (final char in service.characteristics) {
+          final uuidLower = char.uuid.toString().toLowerCase();
+          if (knownWriteUuids.any((known) => uuidLower.contains(known))) {
+            writeChar = char;
+            debugPrint('[THERMAL PRINTER iOS] Característica reconocida encontrada: ${char.uuid}');
+            break;
+          }
+        }
+        if (writeChar != null) break;
+      }
+
+      // Prioridad 2: Cualquier característica con capacidad de escritura
+      // (excluyendo servicios estándar de información de BLE)
+      if (writeChar == null) {
+        for (final service in services) {
+          final sUuid = service.uuid.toString().toLowerCase();
+          if (sUuid.contains('1800') ||
+              sUuid.contains('1801') ||
+              sUuid.contains('180a') ||
+              sUuid.contains('180f')) {
+            continue;
+          }
+          for (final char in service.characteristics) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              writeChar = char;
+              debugPrint('[THERMAL PRINTER iOS] Característica escribible seleccionada: ${char.uuid} (Servicio: ${service.uuid})');
+              break;
+            }
+          }
+          if (writeChar != null) break;
+        }
+      }
+
+      if (writeChar == null) {
+        throw const ThermalPrinterException(
+          'No se encontró el canal de datos de impresión en la impresora. '
+          'Verifique que la impresora soporte Bluetooth BLE con comandos ESC/POS.',
+        );
+      }
+
+      // 5. Transmisión controlada en fragmentos según MTU
+      final withoutResponse = writeChar.properties.writeWithoutResponse;
+      final int mtu = device.mtuNow > 23 ? (device.mtuNow - 3) : 20;
+      final int chunkSize = mtu.clamp(20, 100);
+
+      debugPrint('[THERMAL PRINTER iOS] Transmitiendo ${bytes.length} bytes (chunk: $chunkSize, withoutResponse: $withoutResponse)...');
+
+      for (int offset = 0; offset < bytes.length; offset += chunkSize) {
+        final end = (offset + chunkSize < bytes.length) ? offset + chunkSize : bytes.length;
+        final chunk = bytes.sublist(offset, end);
+        await writeChar.write(chunk, withoutResponse: withoutResponse);
+        if (withoutResponse) {
+          // Pausa entre fragmentos para evitar saturación del buffer UART de la impresora
+          await Future.delayed(const Duration(milliseconds: 25));
+        }
+      }
+
+      debugPrint('[THERMAL PRINTER iOS] Transmisión de bytes completada con éxito.');
+
+      // 6. Tiempo de espera para que el cabezal de impresión vacíe su buffer mecánico
+      await Future.delayed(const Duration(milliseconds: 1200));
+    } catch (e) {
+      debugPrint('[THERMAL PRINTER iOS] Error al imprimir: $e');
+      if (e is ThermalPrinterException) rethrow;
+      throw ThermalPrinterException('Error al imprimir en iOS: $e');
+    } finally {
+      // 7. Desconectar SIEMPRE para liberar la impresora y evitar que quede bloqueada/ocupada
+      try {
+        debugPrint('[THERMAL PRINTER iOS] Desconectando dispositivo para liberar el canal...');
+        await device.disconnect();
+      } catch (e) {
+        debugPrint('[THERMAL PRINTER iOS] Error al desconectar: $e');
+      }
+    }
+  }
+
+  /// Impresión estándar para Android mediante el plugin de Bluetooth Clásico (SPP)
+  Future<void> _printViaClassicAndroid({
+    required List<int> bytes,
+    required String mac,
+  }) async {
+    debugPrint('[THERMAL PRINTER Android] Conectando a $mac...');
+    await connect(mac: mac);
+
     try {
       final success = await PrintBluetoothThermal.writeBytes(bytes);
       if (!success) {
         throw const ThermalPrinterException('Error al enviar los datos a la impresora.');
       }
+      debugPrint('[THERMAL PRINTER Android] Impresión enviada con éxito.');
+      await Future.delayed(const Duration(milliseconds: 800));
+    } catch (e) {
+      if (e is ThermalPrinterException) rethrow;
+      throw ThermalPrinterException('Error de comunicación con la impresora: $e');
     } finally {
-      await Future.delayed(const Duration(milliseconds: 600));
+      try {
+        await disconnect();
+      } catch (_) {}
     }
   }
 
