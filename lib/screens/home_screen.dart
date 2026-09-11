@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/cliente.dart';
 import '../models/dispositivo.dart';
@@ -49,6 +50,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _tempCapturada;
   bool _isSaving = false;
 
+  bool _isDensityStabilizing = false;
+  bool _isSensorsStabilizing = false;
+  Timer? _densityTimer;
+  Timer? _sensorsTimer;
+
   @override
   void initState() {
     super.initState();
@@ -63,16 +69,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _densityTimer?.cancel();
+    _sensorsTimer?.cancel();
     BluetoothManager.instance.removeListener(_onBluetoothStateChanged);
     super.dispose();
   }
 
   void _resetFlow() {
+    _densityTimer?.cancel();
+    _sensorsTimer?.cancel();
     setState(() {
       _currentStep = MeasurementStep.densidad;
       _densidadCapturada = null;
       _phCapturado = null;
       _tempCapturada = null;
+      _isDensityStabilizing = false;
+      _isSensorsStabilizing = false;
     });
   }
 
@@ -271,7 +283,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 )
-              else if (!isMeasurementActive)
+              else if (!isMeasurementActive) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          '¿Deseas verificar que la muestra esté a temperatura óptima antes de comenzar?',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: Colors.black54),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _showQuickTempCheckDialog(context, btManager),
+                        icon: const Icon(Icons.thermostat, color: Colors.orange),
+                        label: const Text('Verificar Temperatura', style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                          foregroundColor: Colors.orange.shade800,
+                          side: BorderSide(color: Colors.orange.shade300, width: 2),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 ElevatedButton.icon(
                   onPressed: () => _showSensorWarningDialog(context, btManager),
                   icon: const Icon(Icons.play_arrow_rounded, size: 26),
@@ -286,8 +325,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 3,
                   ),
-                )
-              else
+                ),
+              ] else
                 OutlinedButton.icon(
                   onPressed: () {
                     btManager.resetMeasurement();
@@ -470,25 +509,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Botón de acción requerido: "Guardar medición de la densidad"
             ElevatedButton.icon(
-              onPressed: canConfirm
+              onPressed: (canConfirm && !_isDensityStabilizing)
                   ? () {
                       setState(() {
-                        _densidadCapturada = densidad;
-                        _currentStep = MeasurementStep.tempAndPh;
+                        _isDensityStabilizing = true;
                       });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Densidad confirmada: $densidad. Pasando a Temperatura y pH.'),
-                          duration: const Duration(seconds: 2),
-                          backgroundColor: const Color(0xFF008C83),
-                        ),
-                      );
+                      _densityTimer = Timer(const Duration(seconds: 3), () {
+                        if (mounted) {
+                          setState(() {
+                            _isDensityStabilizing = false;
+                            _densidadCapturada = densidad;
+                          });
+                          _showSensorsPlacementDialog();
+                        }
+                      });
                     }
                   : null,
-              icon: const Icon(Icons.check_circle_outline, size: 22),
-              label: const Text(
-                'Guardar medición de la densidad',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              icon: _isDensityStabilizing
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.check_circle_outline, size: 22),
+              label: Text(
+                _isDensityStabilizing ? 'Estabilizando balanza...' : 'Guardar medición de la densidad',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
@@ -509,6 +551,24 @@ class _HomeScreenState extends State<HomeScreen> {
     required String ph,
     required bool canConfirm,
   }) {
+    double? tempValue;
+    try {
+      tempValue = double.tryParse(temp.replaceAll(RegExp(r'[^0-9.-]'), ''));
+    } catch (_) {}
+
+    bool isTempWarning = false;
+    String? tempWarningMessage;
+
+    if (tempValue != null) {
+      if (tempValue < 14.0) {
+        isTempWarning = true;
+        tempWarningMessage = 'Temperatura baja: Espera a que la muestra se caliente un poco para evitar distorsión en la densidad.';
+      } else if (tempValue > 16.0) {
+        isTempWarning = true;
+        tempWarningMessage = 'Temperatura elevada: Refrigera la muestra unos minutos para alcanzar los 15°C óptimos.';
+      }
+    }
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -580,6 +640,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Sensores pH y Temperatura
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: SensorBox(
@@ -594,6 +655,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     label: 'Temperatura',
                     value: temp,
                     active: true,
+                    isWarning: isTempWarning,
+                    warningMessage: tempWarningMessage,
                   ),
                 ),
               ],
@@ -603,7 +666,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Botón de confirmación Paso 2
             ElevatedButton.icon(
-              onPressed: canConfirm
+              onPressed: (canConfirm && !_isSensorsStabilizing)
                   ? () {
                       setState(() {
                         _phCapturado = ph;
@@ -612,10 +675,12 @@ class _HomeScreenState extends State<HomeScreen> {
                       });
                     }
                   : null,
-              icon: const Icon(Icons.arrow_forward_rounded, size: 22),
-              label: const Text(
-                'Confirmar Temperatura y pH',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              icon: _isSensorsStabilizing
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.arrow_forward_rounded, size: 22),
+              label: Text(
+                _isSensorsStabilizing ? 'Estabilizando sensores...' : 'Confirmar Temperatura y pH',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
@@ -1145,6 +1210,100 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _showQuickTempCheckDialog(BuildContext context, BluetoothManager btManager) {
+    btManager.startMeasurement();
+    bool confirmed = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (modalCtx) {
+        return ListenableBuilder(
+          listenable: btManager,
+          builder: (ctx, child) {
+            final temp = btManager.temperaturaActual;
+            double? tempValue;
+            try {
+              tempValue = double.tryParse(temp.replaceAll(RegExp(r'[^0-9.-]'), ''));
+            } catch (_) {}
+
+            bool isOptimal = false;
+            bool isLow = false;
+            bool isHigh = false;
+
+            if (tempValue != null) {
+              if (tempValue >= 14.0 && tempValue <= 16.0) isOptimal = true;
+              else if (tempValue < 14.0) isLow = true;
+              else if (tempValue > 16.0) isHigh = true;
+            }
+
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.thermostat, size: 40, color: Colors.orange),
+                  const SizedBox(height: 12),
+                  const Text('Pre-chequeo Térmico', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 20),
+                  Text(
+                    temp == 'N/D' ? 'Obteniendo...' : temp,
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: isOptimal ? Colors.green : (temp == 'N/D' ? Colors.grey : Colors.amber.shade900),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (isOptimal)
+                    const Text('Lista para análisis (15°C óptimo)', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600))
+                  else if (isLow)
+                    const Text('Temperatura baja. Caliente la muestra.', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600))
+                  else if (isHigh)
+                    const Text('Temperatura elevada. Refrigere la muestra.', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.w600)),
+                  
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            Navigator.pop(modalCtx);
+                          },
+                          child: const Text('Cancelar'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF008C83)),
+                          onPressed: isOptimal ? () {
+                            confirmed = true;
+                            Navigator.pop(modalCtx);
+                            btManager.resetMeasurement();
+                            _showSensorWarningDialog(context, btManager);
+                          } : null,
+                          child: const Text('Iniciar Análisis'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ).whenComplete(() {
+      if (!confirmed) {
+        btManager.resetMeasurement();
+      }
+    });
+  }
+
   void _showSensorWarningDialog(BuildContext context, BluetoothManager btManager) {
     showDialog(
       context: context,
@@ -1155,12 +1314,20 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
             SizedBox(width: 10),
-            Text('Aviso de Preparación', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Expanded(child: Text('Preparación y Calibración', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
           ],
         ),
-        content: const Text(
-          'Asegúrate que los sensores NO estén dentro del recipiente de BIOSCAN.\n Tambien verifica que sean EXACTAMENTE 50 ml de leche lo que se va a analizar',
-          style: TextStyle(fontSize: 15, height: 1.4),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Antes de iniciar, verifica lo siguiente:', style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 10),
+            _ChecklistItem(text: 'Volumen exacto: Exactamente 50 ml de leche en el recipiente.'),
+            _ChecklistItem(text: 'Balanza despejada: Sin objetos sobre la celda de carga.'),
+            _ChecklistItem(text: 'Sin sensores sumergidos: Ningún sensor dentro del recipiente durante el pesaje inicial.'),
+            _ChecklistItem(text: 'Temperatura: Recomendado 15°C (14°C - 16°C).'),
+          ],
         ),
         actions: [
           TextButton(
@@ -1173,10 +1340,49 @@ class _HomeScreenState extends State<HomeScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             icon: const Icon(Icons.play_arrow),
-            label: const Text('Entendido, Comenzar'),
+            label: const Text('Iniciar Prueba'),
             onPressed: () {
               Navigator.pop(dialogCtx);
               btManager.startMeasurement();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSensorsPlacementDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Paso 2: Colocación de Sensores', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        content: const Text(
+          'Coloca cuidadosamente tanto el sensor de temperatura como el de pH sumergidos en la muestra de leche sin tocar el fondo ni las paredes.',
+          style: TextStyle(fontSize: 15, height: 1.4),
+        ),
+        actions: [
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF008C83),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            icon: const Icon(Icons.arrow_forward),
+            label: const Text('Continuar con la medición'),
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              setState(() {
+                _currentStep = MeasurementStep.tempAndPh;
+                _isSensorsStabilizing = true;
+              });
+              _sensorsTimer = Timer(const Duration(seconds: 6), () {
+                if (mounted) {
+                  setState(() {
+                    _isSensorsStabilizing = false;
+                  });
+                }
+              });
             },
           ),
         ],
@@ -1269,4 +1475,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
 extension on Iterable<Ganadero?> {
   Ganadero? get firstOrNull => isEmpty ? null : first;
+}
+
+class _ChecklistItem extends StatelessWidget {
+  const _ChecklistItem({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_circle_outline, size: 18, color: Colors.green),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
+        ],
+      ),
+    );
+  }
 }

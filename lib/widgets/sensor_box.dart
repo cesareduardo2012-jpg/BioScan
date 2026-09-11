@@ -6,11 +6,15 @@ class SensorBox extends StatelessWidget {
     required this.label,
     required this.value,
     required this.active,
+    this.isWarning = false,
+    this.warningMessage,
   });
 
   final String label;
   final String value;
   final bool active;
+  final bool isWarning;
+  final String? warningMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +38,15 @@ class SensorBox extends StatelessWidget {
           height: 65,
           padding: const EdgeInsets.symmetric(horizontal: 4),
           decoration: BoxDecoration(
-            color: active ? brandColor.withValues(alpha: 0.1) : Colors.grey.shade200,
+            color: active 
+                ? (isWarning ? Colors.amber.shade50 : brandColor.withValues(alpha: 0.1)) 
+                : Colors.grey.shade200,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: active ? brandColor : Colors.grey.shade300,
-              width: 1.5,
+              color: active 
+                  ? (isWarning ? Colors.amber : brandColor) 
+                  : Colors.grey.shade300,
+              width: isWarning ? 2.5 : 1.5,
             ),
           ),
           alignment: Alignment.center,
@@ -48,11 +56,25 @@ class SensorBox extends StatelessWidget {
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.bold,
-              color: active ? brandColor : Colors.grey.shade600,
+              color: active 
+                  ? (isWarning ? Colors.amber.shade900 : brandColor) 
+                  : Colors.grey.shade600,
             ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
+        if (warningMessage != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            warningMessage!,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.amber.shade900,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ],
     );
   }
