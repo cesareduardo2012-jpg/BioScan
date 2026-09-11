@@ -29,7 +29,22 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>BioScan necesita acceso a Bluetooth para comunicarse con el analizador de fluidos.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-<string>BioScan necesita Bluetooth para conectarse al dispositivo ESP32.</string>
+	<string>BioScan necesita Bluetooth para conectarse al dispositivo ESP32.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>BioScan necesita acceso a la ubicación para detectar dispositivos Bluetooth cercanos.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

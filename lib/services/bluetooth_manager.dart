@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'hardware_simulator_service.dart';
 
 class BluetoothManager extends ChangeNotifier {
   BluetoothManager._();
@@ -18,6 +20,9 @@ class BluetoothManager extends ChangeNotifier {
   String temperaturaActual = "N/D";
   String densidadActual = "N/D";
 
+  bool isMeasurementActive = false;
+  bool isSimulationMode = false;
+
   void init() {
     FlutterBluePlus.scanResults.listen((results) {
       scanResults = results;
@@ -27,9 +32,61 @@ class BluetoothManager extends ChangeNotifier {
       isScanning = state;
       notifyListeners();
     });
+
+    _loadSimulationPreference();
+  }
+
+  Future<void> _loadSimulationPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedSim = prefs.getBool('bioscan_simulation_mode') ?? false;
+      if (savedSim) {
+        setSimulationMode(true);
+      }
+    } catch (e) {
+      debugPrint("Error al cargar preferencia de simulación: $e");
+    }
+  }
+
+  /// Activa o desactiva el Modo Simulador de Hardware (BioScan-Demo)
+  void setSimulationMode(bool enabled) {
+    if (isSimulationMode == enabled && connectedDevice != null) return;
+    isSimulationMode = enabled;
+
+    try {
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setBool('bioscan_simulation_mode', enabled);
+      });
+    } catch (_) {}
+
+    if (enabled) {
+      // Desconectar hardware físico si estuviera conectado
+      if (connectedDevice != null && connectedDevice!.remoteId.str != 'BioScan-Demo') {
+        connectedDevice!.disconnect().catchError((_) {});
+      }
+      // Conectar cliente simulador BioScan-Demo
+      connectedDevice = BluetoothDevice.fromId('BioScan-Demo');
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
+      latestRawLine = "SIMULADOR CONECTADO (BioScan-Demo)";
+      notifyListeners();
+    } else {
+      // Apagado limpio inmediato del servicio y timers
+      HardwareSimulatorService.instance.stop();
+      connectedDevice = null;
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
+      latestRawLine = "";
+      notifyListeners();
+    }
   }
 
   Future<void> requestPermissions() async {
+    if (isSimulationMode) return;
     await [
       Permission.bluetooth,
       Permission.bluetoothScan,
@@ -39,10 +96,12 @@ class BluetoothManager extends ChangeNotifier {
   }
 
   void startScan() async {
+    if (isSimulationMode) return;
     await requestPermissions();
     scanResults.clear();
     receivedData = "";
     latestRawLine = "";
+    isMeasurementActive = false;
     phActual = "N/D";
     temperaturaActual = "N/D";
     densidadActual = "N/D";
@@ -55,14 +114,20 @@ class BluetoothManager extends ChangeNotifier {
   }
 
   void stopScan() async {
+    if (isSimulationMode) return;
     await FlutterBluePlus.stopScan();
   }
 
   void connectToDevice(BluetoothDevice device, {required VoidCallback onError}) async {
+    if (isSimulationMode) return;
     stopScan();
     try {
       await device.connect();
       connectedDevice = device;
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
       notifyListeners();
       _discoverServices(device);
     } catch (e) {
@@ -72,16 +137,63 @@ class BluetoothManager extends ChangeNotifier {
   }
 
   void disconnectDevice() async {
+    if (isSimulationMode) {
+      HardwareSimulatorService.instance.stop();
+      connectedDevice = null;
+      isMeasurementActive = false;
+      phActual = "N/D";
+      temperaturaActual = "N/D";
+      densidadActual = "N/D";
+      latestRawLine = "";
+      notifyListeners();
+      return;
+    }
+
     if (connectedDevice != null) {
       await connectedDevice!.disconnect();
       connectedDevice = null;
       receivedData = "";
       latestRawLine = "";
+      isMeasurementActive = false;
       phActual = "N/D";
       temperaturaActual = "N/D";
       densidadActual = "N/D";
       notifyListeners();
     }
+  }
+
+  /// Inicia activamente la medición y el procesamiento proyectado de datos (real o simulado)
+  void startMeasurement() {
+    isMeasurementActive = true;
+    if (isSimulationMode) {
+      HardwareSimulatorService.instance.start(
+        interval: const Duration(milliseconds: 1500),
+        onData: (reading) {
+          phActual = reading.ph;
+          temperaturaActual = reading.temperatura;
+          densidadActual = reading.densidad;
+          latestRawLine = reading.rawLine;
+          notifyListeners();
+        },
+      );
+    } else {
+      if (receivedData.isNotEmpty) {
+        parseIncomingData(receivedData);
+      }
+    }
+    notifyListeners();
+  }
+
+  /// Reinicia la medición y oculta la proyección hasta una nueva confirmación
+  void resetMeasurement() {
+    isMeasurementActive = false;
+    if (isSimulationMode) {
+      HardwareSimulatorService.instance.stop();
+    }
+    phActual = "N/D";
+    temperaturaActual = "N/D";
+    densidadActual = "N/D";
+    notifyListeners();
   }
 
   void _discoverServices(BluetoothDevice device) async {
@@ -127,7 +239,9 @@ class BluetoothManager extends ChangeNotifier {
       receivedData = receivedData.substring(receivedData.length - 1000);
     }
 
-    parseIncomingData(receivedData);
+    if (isMeasurementActive) {
+      parseIncomingData(receivedData);
+    }
     notifyListeners();
   }
 
@@ -154,17 +268,21 @@ class BluetoothManager extends ChangeNotifier {
     } catch (_) {}
 
     // 2. Extraer SIEMPRE la ÚLTIMA ocurrencia usando Expresiones Regulares para Ph, T, D
-    final phMatches = RegExp(r'(?:Ph|PH|ph)\s*:\s*([0-9.]+)', caseSensitive: false).allMatches(cleanData);
+    // El ESP32 manda valores que pueden ser negativos (ej. "D:-0.026", "P:-0.3"),
+    // por lo que el signo "-" debe ser parte del valor capturado.
+    final phMatches = RegExp(r'(?:Ph|PH|ph)\s*:\s*(-?[0-9.]+)', caseSensitive: false).allMatches(cleanData);
     if (phMatches.isNotEmpty && phMatches.last.group(1) != null) {
       phActual = phMatches.last.group(1)!;
     }
 
-    final tempMatches = RegExp(r'(?:Temp|Temperatura|T)\s*:\s*([0-9.]+\s*°?[CC]?)', caseSensitive: false).allMatches(cleanData);
+    final tempMatches = RegExp(r'(?:Temp|Temperatura|T)\s*:\s*(-?[0-9.]+\s*°?[CC]?)', caseSensitive: false).allMatches(cleanData);
     if (tempMatches.isNotEmpty && tempMatches.last.group(1) != null) {
       temperaturaActual = tempMatches.last.group(1)!;
     }
 
-    final densMatches = RegExp(r'(?:Densidad|Dens|Agua|D)\s*:\s*([0-9.]+%?)', caseSensitive: false).allMatches(cleanData);
+    // "D" (Densidad) es el valor a mostrar. "P" (Peso) llega en la misma trama
+    // pero se ignora deliberadamente: el ESP32 ya usa P para calcular D internamente.
+    final densMatches = RegExp(r'(?:Densidad|Dens|Agua|D)\s*:\s*(-?[0-9.]+%?)', caseSensitive: false).allMatches(cleanData);
     if (densMatches.isNotEmpty && densMatches.last.group(1) != null) {
       densidadActual = densMatches.last.group(1)!;
     }

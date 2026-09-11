@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/cliente.dart';
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
-import '../screens/beta_bluetooth_screen.dart';
+// import '../screens/beta_bluetooth_screen.dart';
 import '../screens/ganaderos_crud.dart';
 import '../screens/historial_mediciones_screen.dart';
 import '../screens/home_screen.dart';
@@ -44,11 +44,14 @@ class _MainNavigationState extends State<MainNavigation> {
 
   void _startPeriodicSync() {
     _syncTimer?.cancel();
-    // Intenta sincronizar automáticamente con Supabase en la nube cada 30 segundos si hay internet
+    // Sincronización automática bidireccional cada 30 segundos si hay internet
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       final auth = ServiceLocator.authService;
-      if (auth.isLoggedIn) {
-        await ServiceLocator.syncService.syncPendingRecords();
+      if (auth.isLoggedIn && mounted) {
+        await ServiceLocator.syncService.syncAll();
+        if (mounted) {
+          await _loadFilteredData();
+        }
       }
     });
   }
@@ -67,10 +70,26 @@ class _MainNavigationState extends State<MainNavigation> {
       _selectedClienteId = activeClienteId;
     });
 
+    // Cargar datos locales de inmediato
     await _loadFilteredData();
 
-    // Disparar sincronización inicial automática en segundo plano
-    ServiceLocator.syncService.syncPendingRecords();
+    // Sincronizar bidireccionalmente con Supabase Nube para descargar registros existentes
+    _syncInitialData();
+  }
+
+  Future<void> _syncInitialData() async {
+    try {
+      await ServiceLocator.syncService.syncAll();
+      if (mounted) {
+        final clientes = await ServiceLocator.clienteRepository.getClientes();
+        setState(() {
+          _clientes = clientes;
+        });
+        await _loadFilteredData();
+      }
+    } catch (e) {
+      debugPrint('[NAVIGATION] Error en sincronización inicial remota: $e');
+    }
   }
 
   Future<void> _loadFilteredData() async {
@@ -116,23 +135,27 @@ class _MainNavigationState extends State<MainNavigation> {
         : ganadero.copyWith(
             clienteId: activeClienteId,
             fechaRegistro: ganadero.fechaRegistro.isEmpty ? nowIso : ganadero.fechaRegistro,
+            sincronizado: false,
           );
 
-    debugPrint('[GANADERO SERVICE/APP] Objeto final preparado para inserción: ${newGanadero.toMap()}');
     await ServiceLocator.ganaderoRepository.insertGanadero(newGanadero);
-    debugPrint('[GANADERO SERVICE/APP] Registro completado en Repository. Recargando datos en UI...');
-    await _loadFilteredData();
-
-    // Disparar sincronización automática en segundo plano
-    ServiceLocator.syncService.syncPendingRecords();
-  }
-
-  Future<void> _updateGanadero(Ganadero ganadero) async {
-    await ServiceLocator.ganaderoRepository.updateGanadero(ganadero);
     await _loadFilteredData();
 
     // Disparar sincronización automática inmediata
-    ServiceLocator.syncService.syncPendingRecords();
+    ServiceLocator.syncService.syncAll().then((_) {
+      if (mounted) _loadFilteredData();
+    });
+  }
+
+  Future<void> _updateGanadero(Ganadero ganadero) async {
+    final updated = ganadero.copyWith(sincronizado: false);
+    await ServiceLocator.ganaderoRepository.updateGanadero(updated);
+    await _loadFilteredData();
+
+    // Disparar sincronización automática inmediata
+    ServiceLocator.syncService.syncAll().then((_) {
+      if (mounted) _loadFilteredData();
+    });
   }
 
   Future<void> _deleteGanadero(String id) async {
@@ -140,7 +163,9 @@ class _MainNavigationState extends State<MainNavigation> {
     await _loadFilteredData();
 
     // Disparar sincronización automática inmediata
-    ServiceLocator.syncService.syncPendingRecords();
+    ServiceLocator.syncService.syncAll().then((_) {
+      if (mounted) _loadFilteredData();
+    });
   }
 
   Future<void> _handleManualSync() async {
@@ -158,7 +183,13 @@ class _MainNavigationState extends State<MainNavigation> {
     }
 
     try {
-      await ServiceLocator.syncService.syncPendingRecords();
+      await ServiceLocator.syncService.syncAll();
+      final clientes = await ServiceLocator.clienteRepository.getClientes();
+      if (mounted) {
+        setState(() {
+          _clientes = clientes;
+        });
+      }
       await _loadFilteredData();
 
       if (!mounted) return;
@@ -246,18 +277,24 @@ class _MainNavigationState extends State<MainNavigation> {
         onAddGanadero: _addGanadero,
         onEditGanadero: _updateGanadero,
         onDeleteGanadero: _deleteGanadero,
+        onRefresh: _syncInitialData,
       ),
-      HistorialMedicionesScreen(mediciones: _mediciones, ganaderos: _ganaderos),
+      HistorialMedicionesScreen(
+        mediciones: _mediciones,
+        ganaderos: _ganaderos,
+        cliente: selectedCliente,
+        usuario: currentUser,
+      ),
       if (currentUser.isAdmin) const UsuariosScreen(),
-      const BetaBluetoothScreen(),
+      //const BetaBluetoothScreen(),
     ];
 
     final List<NavigationDestination> destinations = [
       const NavigationDestination(icon: Icon(Icons.biotech), label: 'Escaneo'),
       const NavigationDestination(icon: Icon(Icons.group), label: 'Ganaderos'),
       const NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
-      if (currentUser.isAdmin) const NavigationDestination(icon: Icon(Icons.manage_accounts), label: 'Usuarios'),
-      const NavigationDestination(icon: Icon(Icons.bluetooth_searching), label: 'Beta BLE'),
+      if (currentUser.isAdmin) const NavigationDestination(icon: Icon(Icons.manage_accounts), label: 'Configuración'),
+      //const NavigationDestination(icon: Icon(Icons.bluetooth_searching), label: 'Beta BLE'),
     ];
 
     // Asegurar que el índice de navegación no exceda las pestañas disponibles

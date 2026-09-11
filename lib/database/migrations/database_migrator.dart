@@ -109,5 +109,14 @@ class DatabaseMigrator {
       }
       await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_cliente_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnClienteId})');
     }
+
+    if (oldVersion < 6) {
+      // Migración v6: Agregar columna pdf_path a la tabla mediciones para persistencia de reportes PDF locales
+      final medicionesInfo = await db.rawQuery("PRAGMA table_info(${MedicionesTable.tableName})");
+      final hasPdfPath = medicionesInfo.any((c) => c['name'] == MedicionesTable.columnPdfPath);
+      if (!hasPdfPath) {
+        await db.execute('ALTER TABLE ${MedicionesTable.tableName} ADD COLUMN ${MedicionesTable.columnPdfPath} TEXT');
+      }
+    }
   }
 }

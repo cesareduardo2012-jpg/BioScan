@@ -13,6 +13,16 @@ class DispositivoDao {
     return maps.map((map) => Dispositivo.fromMap(map)).toList();
   }
 
+  Future<Dispositivo?> getById(String id) async {
+    final maps = await _database.db.query(
+      DispositivosTable.tableName,
+      where: '${DispositivosTable.columnId} = ?',
+      whereArgs: [id],
+    );
+    if (maps.isEmpty) return null;
+    return Dispositivo.fromMap(maps.first);
+  }
+
   Future<List<Dispositivo>> getByClienteId(String clienteId) async {
     final maps = await _database.db.query(
       DispositivosTable.tableName,

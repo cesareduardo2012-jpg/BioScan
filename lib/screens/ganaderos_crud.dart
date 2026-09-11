@@ -8,12 +8,14 @@ class GanaderosCRUD extends StatefulWidget {
     required this.onAddGanadero,
     required this.onEditGanadero,
     required this.onDeleteGanadero,
+    this.onRefresh,
   });
 
   final List<Ganadero> ganaderos;
   final Future<void> Function(Ganadero) onAddGanadero;
   final Future<void> Function(Ganadero) onEditGanadero;
   final Future<void> Function(String) onDeleteGanadero;
+  final Future<void> Function()? onRefresh;
 
   @override
   State<GanaderosCRUD> createState() => _GanaderosCRUDState();
@@ -211,28 +213,38 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
     return Scaffold(
       appBar: AppBar(title: const Text('Gestión de Ganaderos')),
       floatingActionButton: FloatingActionButton(onPressed: () => _showForm(), child: const Icon(Icons.add)),
-      body: widget.ganaderos.isEmpty
-          ? const Center(child: Text('No hay ganaderos registrados aún'))
-          : ListView.builder(
-              itemCount: widget.ganaderos.length,
-              itemBuilder: (ctx, i) {
-                final ganadero = widget.ganaderos[i];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-                  child: ListTile(
-                    title: Text(ganadero.nombreCompleto),
-                    subtitle: Text('Rancho: ${ganadero.rancho} • Tel: ${ganadero.tel}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showForm(ganadero: ganadero)),
-                        IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmDelete(ganadero)),
-                      ],
+      body: RefreshIndicator(
+        onRefresh: widget.onRefresh ?? () async {},
+        child: widget.ganaderos.isEmpty
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(child: Text('No hay ganaderos registrados aún\nDesliza hacia abajo para sincronizar con la nube', textAlign: TextAlign.center)),
+                ],
+              )
+            : ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: widget.ganaderos.length,
+                itemBuilder: (ctx, i) {
+                  final ganadero = widget.ganaderos[i];
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+                    child: ListTile(
+                      title: Text(ganadero.nombreCompleto),
+                      subtitle: Text('Rancho: ${ganadero.rancho} • Tel: ${ganadero.tel}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showForm(ganadero: ganadero)),
+                          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmDelete(ganadero)),
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
+      ),
     );
   }
 }

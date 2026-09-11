@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import '../models/cliente.dart';
+import '../models/dispositivo.dart';
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
+import '../models/usuario.dart';
 import '../repositories/cliente_repository.dart';
 import '../repositories/dispositivo_repository.dart';
 import '../repositories/ganadero_repository.dart';
@@ -11,6 +14,7 @@ import '../utils/supabase_config.dart';
 abstract class SyncService {
   Future<void> syncPendingRecords();
   Future<void> downloadChanges();
+  Future<void> syncAll();
   Future<void> resolveConflicts();
 }
 
@@ -28,6 +32,22 @@ class SyncServiceImpl implements SyncService {
     this._ganaderoRepository,
     this._medicionRepository,
   );
+
+  @override
+  Future<void> syncAll() async {
+    if (!SupabaseConfig.isInitialized) return;
+    try {
+      debugPrint('[SYNC SERVICE] Iniciando sincronización bidireccional completa con Supabase Nube...');
+      // 1. Descargar cambios remotos primero para poblar SQLite local
+      await downloadChanges();
+      // 2. Subir registros locales que no estén sincronizados
+      await syncPendingRecords();
+      debugPrint('[SYNC SERVICE] Sincronización bidireccional completada con éxito.');
+    } catch (e, st) {
+      debugPrint('[SYNC SERVICE ERROR] Error durante syncAll: $e');
+      debugPrint(st.toString());
+    }
+  }
 
   @override
   Future<void> syncPendingRecords() async {
@@ -156,28 +176,89 @@ class SyncServiceImpl implements SyncService {
     try {
       final client = SupabaseConfig.client;
 
-      // Descargar Ganaderos remotos
-      final ganaderosData = await client.from('ganaderos').select();
-      for (var map in ganaderosData) {
-        final ganaderoRemote = Ganadero.fromMap(map).copyWith(sincronizado: true);
-        final localExisting = await _ganaderoRepository.getGanaderoById(ganaderoRemote.id);
-        if (localExisting == null) {
-          await _ganaderoRepository.insertGanadero(ganaderoRemote);
+      // 1. Descargar Cuentas/Clientes remotos primero para mantener integridad referencial
+      try {
+        final cuentasData = await client.from('cuentas').select();
+        for (var map in cuentasData) {
+          final cliente = Cliente.fromMap(map);
+          final localExisting = await _clienteRepository.getClienteById(cliente.id);
+          if (localExisting == null) {
+            await _clienteRepository.insertCliente(cliente);
+          } else {
+            await _clienteRepository.updateCliente(cliente);
+          }
         }
+      } catch (e) {
+        debugPrint('Error al descargar cuentas de Supabase: $e');
       }
 
-      // Descargar Mediciones remotas
-      final medicionesData = await client.from('mediciones').select();
-      for (var map in medicionesData) {
-        final medicionRemote = Medicion.fromMap(map).copyWith(sincronizado: true);
-        final localExisting = await _medicionRepository.getMedicionById(medicionRemote.id);
-        if (localExisting == null) {
-          await _medicionRepository.insertMedicion(medicionRemote);
+      // 2. Descargar Dispositivos remotos
+      try {
+        final dispData = await client.from('dispositivos').select();
+        for (var map in dispData) {
+          final disp = Dispositivo.fromMap(map);
+          final localExisting = await _dispositivoRepository.getDispositivoById(disp.id);
+          if (localExisting == null) {
+            await _dispositivoRepository.insertDispositivo(disp);
+          } else {
+            await _dispositivoRepository.updateDispositivo(disp);
+          }
         }
+      } catch (e) {
+        debugPrint('Error al descargar dispositivos de Supabase: $e');
       }
-      debugPrint('Descarga de cambios remotos desde Supabase completada.');
+
+      // 3. Descargar Usuarios remotos
+      try {
+        final usrData = await client.from('usuarios').select();
+        for (var map in usrData) {
+          final usr = Usuario.fromMap(map);
+          final localExisting = await _usuarioRepository.getUsuarioById(usr.id);
+          if (localExisting == null) {
+            await _usuarioRepository.insertUsuario(usr);
+          } else {
+            await _usuarioRepository.updateUsuario(usr);
+          }
+        }
+      } catch (e) {
+        debugPrint('Error al descargar usuarios de Supabase: $e');
+      }
+
+      // 4. Descargar Ganaderos remotos
+      try {
+        final ganaderosData = await client.from('ganaderos').select();
+        for (var map in ganaderosData) {
+          final ganaderoRemote = Ganadero.fromMap(map).copyWith(sincronizado: true);
+          final localExisting = await _ganaderoRepository.getGanaderoById(ganaderoRemote.id);
+          if (localExisting == null) {
+            await _ganaderoRepository.insertGanadero(ganaderoRemote);
+          } else {
+            await _ganaderoRepository.updateGanadero(ganaderoRemote);
+          }
+        }
+      } catch (e) {
+        debugPrint('Error al descargar ganaderos de Supabase: $e');
+      }
+
+      // 5. Descargar Mediciones remotas
+      try {
+        final medicionesData = await client.from('mediciones').select();
+        for (var map in medicionesData) {
+          final medicionRemote = Medicion.fromMap(map).copyWith(sincronizado: true);
+          final localExisting = await _medicionRepository.getMedicionById(medicionRemote.id);
+          if (localExisting == null) {
+            await _medicionRepository.insertMedicion(medicionRemote);
+          } else {
+            await _medicionRepository.updateMedicion(medicionRemote);
+          }
+        }
+      } catch (e) {
+        debugPrint('Error al descargar mediciones de Supabase: $e');
+      }
+
+      debugPrint('Descarga de cambios remotos desde Supabase completada con éxito.');
     } catch (e) {
-      debugPrint('Error al descargar cambios desde Supabase: $e');
+      debugPrint('Error global al descargar cambios desde Supabase: $e');
     }
   }
 

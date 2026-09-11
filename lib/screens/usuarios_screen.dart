@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../database/dao/usuario_dao.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/bluetooth_manager.dart';
+import '../services/thermal_printer_service.dart';
 import '../utils/service_locator.dart';
+import 'configurar_impresora_screen.dart';
 
 class UsuariosScreen extends StatefulWidget {
   const UsuariosScreen({super.key});
@@ -14,13 +17,28 @@ class UsuariosScreen extends StatefulWidget {
 class _UsuariosScreenState extends State<UsuariosScreen> {
   Usuario? _adminUser;
   Usuario? _operatorUser;
+  Map<String, String>? _configuredPrinter;
   bool _isLoading = true;
+  bool _isPrintingTest = false;
   String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _loadUsersData();
+    BluetoothManager.instance.addListener(_onBtStateChanged);
+  }
+
+  void _onBtStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    BluetoothManager.instance.removeListener(_onBtStateChanged);
+    super.dispose();
   }
 
   Future<void> _loadUsersData() async {
@@ -35,21 +53,83 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
       final admin = await ServiceLocator.usuarioRepository.getAdminByCliente(clienteId);
       final operator = await ServiceLocator.usuarioRepository.getOperatorByCliente(clienteId);
+      final printer = await ThermalPrinterService.instance.getConfiguredPrinter();
 
       if (mounted) {
         setState(() {
           _adminUser = admin ?? auth.currentUser;
           _operatorUser = operator;
+          _configuredPrinter = printer;
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Error al cargar usuarios: $e';
+          _errorMessage = 'Error al cargar datos de configuración: $e';
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _abrirConfigurarImpresora() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => const ConfigurarImpresoraScreen(),
+      ),
+    );
+    await _loadUsersData();
+  }
+
+  Future<void> _imprimirPruebaRapida() async {
+    if (_isPrintingTest) return;
+    setState(() => _isPrintingTest = true);
+
+    try {
+      await ThermalPrinterService.instance.printTestTicket();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ticket de prueba enviado a la impresora con éxito.'),
+            backgroundColor: Color(0xFF008C83),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Error de Impresión'),
+              ],
+            ),
+            content: Text('$e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Entendido'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: const Color(0xFF008C83)),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _abrirConfigurarImpresora();
+                },
+                child: const Text('Configurar Impresora'),
+              ),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isPrintingTest = false);
     }
   }
 
@@ -536,9 +616,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                         children: [
                           Row(
                             children: [
-                              Text(
-                                _adminUser?.nombre ?? 'Administrador',
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                              Flexible(
+                                child: Text(
+                                  _adminUser?.nombre ?? 'Administrador',
+                                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Container(
@@ -576,9 +659,11 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'USUARIO OPERADOR (MÁX. 1 POR CUENTA)',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                const Flexible(
+                  child: Text(
+                    'USUARIO OPERADOR (MÁX. 1 POR CUENTA)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                  ),
                 ),
                 if (_operatorUser == null)
                   FilledButton.icon(
@@ -616,9 +701,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      _operatorUser!.nombre,
-                                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                    Flexible(
+                                      child: Text(
+                                        _operatorUser!.nombre,
+                                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                     const SizedBox(width: 8),
                                     Container(
@@ -743,6 +831,244 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                 ),
               ),
             ],
+
+            const SizedBox(height: 24),
+
+            // SECCIÓN IMPRESORA TÉRMICA BLUETOOTH
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Flexible(
+                  child: Text(
+                    'IMPRESORA TÉRMICA BLUETOOTH',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                  ),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.settings_bluetooth, size: 16, color: Color(0xFF008C83)),
+                  label: const Text('Gestionar', style: TextStyle(color: Color(0xFF008C83))),
+                  onPressed: _abrirConfigurarImpresora,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 24,
+                          backgroundColor: _configuredPrinter != null
+                              ? const Color(0xFF008C83).withValues(alpha: 0.15)
+                              : Colors.grey.shade200,
+                          child: Icon(
+                            Icons.print,
+                            color: _configuredPrinter != null ? const Color(0xFF008C83) : Colors.grey.shade600,
+                            size: 26,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      _configuredPrinter != null
+                                          ? _configuredPrinter!['name']!
+                                          : 'Impresora No Configurada',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: _configuredPrinter != null ? Colors.green.shade100 : Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      _configuredPrinter != null ? 'CONECTADA / LISTA' : 'NO CONFIGURADA',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: _configuredPrinter != null ? Colors.green.shade800 : Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _configuredPrinter != null
+                                    ? 'MAC: ${_configuredPrinter!['mac']} • Formato 58 mm'
+                                    : 'Vincule una impresora térmica portátil para imprimir tickets de análisis',
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF008C83),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            icon: const Icon(Icons.bluetooth_searching, size: 18),
+                            label: Text(_configuredPrinter != null ? 'Cambiar Impresora' : 'Configurar Impresora'),
+                            onPressed: _abrirConfigurarImpresora,
+                          ),
+                        ),
+                        if (_configuredPrinter != null) ...[
+                          const SizedBox(width: 10),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF005267),
+                              side: const BorderSide(color: Color(0xFF005267)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            icon: _isPrintingTest
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF005267)),
+                                  )
+                                : const Icon(Icons.receipt_long, size: 18),
+                            label: const Text('Prueba'),
+                            onPressed: _isPrintingTest ? null : _imprimirPruebaRapida,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // SECCIÓN SIMULADOR DE HARDWARE
+            const Text(
+              'HERRAMIENTAS DE DESARROLLO Y PRUEBAS',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+            ),
+            const SizedBox(height: 8),
+            Builder(
+              builder: (ctx) {
+                final isSimulationActive = BluetoothManager.instance.isSimulationMode;
+                return Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: isSimulationActive ? Colors.deepPurple.shade300 : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  color: isSimulationActive ? Colors.deepPurple.shade50.withValues(alpha: 0.6) : Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundColor: isSimulationActive ? Colors.deepPurple.shade100 : Colors.grey.shade100,
+                              child: Icon(
+                                Icons.science_rounded,
+                                color: isSimulationActive ? Colors.deepPurple : Colors.grey.shade700,
+                                size: 28,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Text(
+                                        'Modo Simulador',
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: isSimulationActive ? Colors.green.shade100 : Colors.grey.shade200,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          isSimulationActive ? 'SIMULADOR ACTIVO' : 'HARDWARE REAL',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: isSimulationActive ? Colors.green.shade800 : Colors.grey.shade700,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    isSimulationActive
+                                        ? 'Conectado a BioScan-Demo • Batería 100%'
+                                        : 'Buscando prototipo físico ESP32 vía BLE',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isSimulationActive ? Colors.deepPurple.shade700 : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Switch(
+                              value: isSimulationActive,
+                              activeThumbColor: Colors.deepPurple,
+                              activeTrackColor: Colors.deepPurple.shade200,
+                              onChanged: (enabled) {
+                                BluetoothManager.instance.setSimulationMode(enabled);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(enabled
+                                        ? 'Modo Simulador Activo: Dispositivo BioScan-Demo listo para pruebas'
+                                        : 'Modo Simulador Desactivado: Cambiando a hardware Bluetooth real'),
+                                    backgroundColor: enabled ? Colors.deepPurple : const Color(0xFF008C83),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Permite realizar mediciones completas por etapas (Densidad, Temperatura y pH) y compilar reportes PDF de forma 100% autónoma sin requerir el sensor físico conectado.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.3),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

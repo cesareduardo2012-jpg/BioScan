@@ -55,7 +55,7 @@ class Dispositivo {
   factory Dispositivo.fromMap(Map<String, dynamic> map) {
     return Dispositivo(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? '',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '',
       numeroSerie: (map['numero_serie'] ?? map['numeroSerie'])?.toString() ?? '',
       nombre: map['nombre']?.toString() ?? '',
       modelo: map['modelo']?.toString() ?? '',
