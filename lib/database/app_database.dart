@@ -46,7 +46,7 @@ class AppDatabase {
 
     _db = await openDatabase(
       dbPath,
-      version: 6,
+      version: 8,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },

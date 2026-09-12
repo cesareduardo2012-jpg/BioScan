@@ -10,6 +10,7 @@ class Usuario {
   final String fechaRegistro;
   final String? ultimoAcceso;
   final bool activo;
+  final bool sincronizado;
 
   const Usuario({
     required this.id,
@@ -23,7 +24,9 @@ class Usuario {
     required this.fechaRegistro,
     this.ultimoAcceso,
     bool? activo,
-  }) : activo = activo ?? true;
+    bool? sincronizado,
+  })  : activo = activo ?? true,
+        sincronizado = sincronizado ?? false;
 
   bool get isAdmin => rol.toUpperCase() == 'ADMINISTRADOR' || rol.toLowerCase() == 'admin';
   bool get isOperador => rol.toUpperCase() == 'OPERADOR' || rol.toLowerCase() == 'tecnico' || rol.toLowerCase() == 'operator';
@@ -40,6 +43,7 @@ class Usuario {
     String? fechaRegistro,
     String? ultimoAcceso,
     bool? activo,
+    bool? sincronizado,
   }) {
     return Usuario(
       id: id ?? this.id,
@@ -53,6 +57,7 @@ class Usuario {
       fechaRegistro: fechaRegistro ?? this.fechaRegistro,
       ultimoAcceso: ultimoAcceso ?? this.ultimoAcceso,
       activo: activo ?? this.activo,
+      sincronizado: sincronizado ?? this.sincronizado,
     );
   }
 
@@ -68,6 +73,7 @@ class Usuario {
         'fecha_registro': fechaRegistro,
         'ultimo_acceso': ultimoAcceso,
         'activo': activo ? 1 : 0,
+        'sincronizado': sincronizado ? 1 : 0,
       };
 
   factory Usuario.fromMap(Map<String, dynamic> map) {
@@ -96,6 +102,7 @@ class Usuario {
       fechaRegistro: (map['fecha_registro'] ?? map['fechaRegistro'])?.toString() ?? DateTime.now().toIso8601String(),
       ultimoAcceso: (map['ultimo_acceso'] ?? map['ultimoAcceso'])?.toString(),
       activo: map['activo'] == 1 || map['activo'] == true || map['activo'] == null,
+      sincronizado: map['sincronizado'] == 1 || map['sincronizado'] == true,
     );
   }
 }

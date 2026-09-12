@@ -267,6 +267,13 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
       ),
     );
 
+    Future.delayed(const Duration(milliseconds: 400), () {
+      usernameCtrl.dispose();
+      nombreCtrl.dispose();
+      passwordCtrl.dispose();
+      confirmPasswordCtrl.dispose();
+    });
+
     await _loadUsersData();
   }
 
@@ -354,6 +361,9 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
       ),
     );
 
+    usernameCtrl.dispose();
+    nombreCtrl.dispose();
+
     await _loadUsersData();
   }
 
@@ -361,50 +371,75 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     if (_operatorUser == null) return;
     final passwordCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
+    String? dialogError;
 
-    await showDialog<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Cambiar Contraseña de ${_operatorUser!.username}'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: passwordCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Nueva Contraseña',
-                  prefixIcon: Icon(Icons.key),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Cambiar Contraseña de ${_operatorUser!.username}'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (dialogError != null) ...[
+                  Text(dialogError!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                  const SizedBox(height: 8),
+                ],
+                TextFormField(
+                  controller: passwordCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Nueva Contraseña',
+                    prefixIcon: Icon(Icons.key),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'Requerido';
+                    if (val.trim().length < 4) return 'Mínimo 4 caracteres';
+                    return null;
+                  },
                 ),
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) return 'Requerido';
-                  if (val.trim().length < 4) return 'Mínimo 4 caracteres';
-                  return null;
-                },
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF008C83)),
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  try {
+                    await ServiceLocator.authService.updateOperator(
+                      operatorId: _operatorUser!.id,
+                      newPassword: passwordCtrl.text,
+                    );
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx, true);
+                    }
+                  } on AuthException catch (e) {
+                    setDialogState(() => dialogError = e.message);
+                  } catch (e) {
+                    setDialogState(() => dialogError = 'Error inesperado: $e');
+                  }
+                }
+              },
+              child: const Text('Actualizar Contraseña'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF008C83)),
-            onPressed: () async {
-              if (formKey.currentState!.validate()) {
-                await ServiceLocator.authService.updateOperator(
-                  operatorId: _operatorUser!.id,
-                  newPassword: passwordCtrl.text,
-                );
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Actualizar Contraseña'),
-          ),
-        ],
       ),
     );
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      passwordCtrl.dispose();
+    });
+
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contraseña cambiada con éxito')),
+      );
+    }
 
     await _loadUsersData();
   }
@@ -459,11 +494,21 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     );
 
     if (confirm == true) {
-      await ServiceLocator.authService.updateOperator(
-        operatorId: _operatorUser!.id,
-        activo: false,
-      );
-      await _loadUsersData();
+      try {
+        await ServiceLocator.authService.deleteOperator(_operatorUser!.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Operador eliminado exitosamente.')),
+          );
+        }
+        await _loadUsersData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al eliminar: $e')),
+          );
+        }
+      }
     }
   }
 
@@ -475,7 +520,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     final formKey = GlobalKey<FormState>();
     String? dialogError;
 
-    await showDialog<bool>(
+    final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -520,7 +565,9 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                       currentPassCtrl.text,
                       newPassCtrl.text,
                     );
-                    if (ctx.mounted) Navigator.pop(ctx, true);
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx, true);
+                    }
                   } on AuthException catch (e) {
                     setDialogState(() => dialogError = e.message);
                   } catch (e) {
@@ -534,40 +581,24 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
         ),
       ),
     );
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      currentPassCtrl.dispose();
+      newPassCtrl.dispose();
+    });
+
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contraseña cambiada con éxito')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = ServiceLocator.authService;
-
-    // Guard de seguridad UI
-    if (!auth.isAdmin) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Gestión de Usuarios')),
-        body: const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.gpp_bad, size: 64, color: Colors.redAccent),
-                SizedBox(height: 16),
-                Text(
-                  'Acceso Restringido',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'La administración de usuarios está reservada únicamente para el Administrador de la cuenta BioScan.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
+    final currentUser = auth.currentUser;
+    final isOperatorMode = currentUser?.isOperador == true;
 
     if (_isLoading) {
       return const Scaffold(
@@ -643,11 +674,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.lock_reset, color: Color(0xFF008C83)),
-                      tooltip: 'Cambiar Mi Contraseña',
-                      onPressed: _showChangeOwnPasswordDialog,
-                    ),
+                    if (!isOperatorMode)
+                      IconButton(
+                        icon: const Icon(Icons.lock_reset, color: Color(0xFF008C83)),
+                        tooltip: 'Cambiar Mi Contraseña',
+                        onPressed: _showChangeOwnPasswordDialog,
+                      ),
                   ],
                 ),
               ),
@@ -665,7 +697,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
                   ),
                 ),
-                if (_operatorUser == null)
+                if (_operatorUser == null && !isOperatorMode)
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF008C83),
@@ -738,33 +770,36 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          TextButton.icon(
-                            icon: const Icon(Icons.edit, size: 18),
-                            label: const Text('Editar'),
-                            onPressed: _showEditOperatorDialog,
-                          ),
+                          if (!isOperatorMode)
+                            TextButton.icon(
+                              icon: const Icon(Icons.edit, size: 18),
+                              label: const Text('Editar'),
+                              onPressed: _showEditOperatorDialog,
+                            ),
                           TextButton.icon(
                             icon: const Icon(Icons.key, size: 18),
                             label: const Text('Clave'),
-                            onPressed: _showChangeOperatorPasswordDialog,
+                            onPressed: isOperatorMode ? _showChangeOwnPasswordDialog : _showChangeOperatorPasswordDialog,
                           ),
-                          TextButton.icon(
-                            icon: Icon(
-                              _operatorUser!.activo ? Icons.block : Icons.check_circle_outline,
-                              size: 18,
-                              color: _operatorUser!.activo ? Colors.orange : Colors.green,
+                          if (!isOperatorMode)
+                            TextButton.icon(
+                              icon: Icon(
+                                _operatorUser!.activo ? Icons.block : Icons.check_circle_outline,
+                                size: 18,
+                                color: _operatorUser!.activo ? Colors.orange : Colors.green,
+                              ),
+                              label: Text(
+                                _operatorUser!.activo ? 'Desactivar' : 'Activar',
+                                style: TextStyle(color: _operatorUser!.activo ? Colors.orange : Colors.green),
+                              ),
+                              onPressed: _toggleOperatorStatus,
                             ),
-                            label: Text(
-                              _operatorUser!.activo ? 'Desactivar' : 'Activar',
-                              style: TextStyle(color: _operatorUser!.activo ? Colors.orange : Colors.green),
+                          if (!isOperatorMode)
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                              tooltip: 'Eliminar Operador',
+                              onPressed: _deleteOperator,
                             ),
-                            onPressed: _toggleOperatorStatus,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                            tooltip: 'Eliminar / Desactivar',
-                            onPressed: _deleteOperator,
-                          ),
                         ],
                       ),
                     ],

@@ -285,7 +285,7 @@ class _MainNavigationState extends State<MainNavigation> {
         cliente: selectedCliente,
         usuario: currentUser,
       ),
-      if (currentUser.isAdmin) const UsuariosScreen(),
+      const UsuariosScreen(),
       //const BetaBluetoothScreen(),
     ];
 
@@ -293,7 +293,7 @@ class _MainNavigationState extends State<MainNavigation> {
       const NavigationDestination(icon: Icon(Icons.biotech), label: 'Escaneo'),
       const NavigationDestination(icon: Icon(Icons.group), label: 'Ganaderos'),
       const NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
-      if (currentUser.isAdmin) const NavigationDestination(icon: Icon(Icons.manage_accounts), label: 'Configuración'),
+      const NavigationDestination(icon: Icon(Icons.manage_accounts), label: 'Configuración'),
       //const NavigationDestination(icon: Icon(Icons.bluetooth_searching), label: 'Beta BLE'),
     ];
 

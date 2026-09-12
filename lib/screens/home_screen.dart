@@ -1234,9 +1234,13 @@ class _HomeScreenState extends State<HomeScreen> {
             bool isHigh = false;
 
             if (tempValue != null) {
-              if (tempValue >= 14.0 && tempValue <= 16.0) isOptimal = true;
-              else if (tempValue < 14.0) isLow = true;
-              else if (tempValue > 16.0) isHigh = true;
+              if (tempValue >= 14.0 && tempValue <= 16.0) {
+                isOptimal = true;
+              } else if (tempValue < 14.0) {
+                isLow = true;
+              } else if (tempValue > 16.0) {
+                isHigh = true;
+              }
             }
 
             return Padding(

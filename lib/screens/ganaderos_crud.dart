@@ -22,7 +22,7 @@ class GanaderosCRUD extends StatefulWidget {
 }
 
 class _GanaderosCRUDState extends State<GanaderosCRUD> {
-  void _showForm({Ganadero? ganadero}) {
+  Future<void> _showForm({Ganadero? ganadero}) async {
     final formKey = GlobalKey<FormState>();
     final nombreController = TextEditingController(text: ganadero?.nombre ?? '');
     final apellidoPaternoController = TextEditingController(text: ganadero?.apellidoPaterno ?? '');
@@ -30,19 +30,16 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
     final ranchoController = TextEditingController(text: ganadero?.rancho ?? '');
     final telController = TextEditingController(text: ganadero?.tel ?? '');
 
-    showModalBottomSheet(
+    await showDialog(
       context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20),
-        child: SingleChildScrollView(
+      builder: (sheetContext) => AlertDialog(
+        title: Text(ganadero == null ? 'Nuevo Ganadero' : 'Editar Ganadero'),
+        content: SingleChildScrollView(
           child: Form(
             key: formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(ganadero == null ? 'Nuevo Ganadero' : 'Editar Ganadero', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
                 TextFormField(
                   controller: nombreController,
                   decoration: const InputDecoration(labelText: 'Nombre'),
@@ -116,15 +113,22 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                     debugPrint('  rancho = $rancho');
                     debugPrint('  telefono = $tel');
 
-                    final values = Ganadero(
-                      id: ganadero?.id ?? '',
-                      clienteId: ganadero?.clienteId,
-                      nombre: nombre,
-                      apellidoPaterno: apellidoPaterno,
-                      apellidoMaterno: apellidoMaterno,
-                      rancho: rancho,
-                      tel: tel,
-                    );
+                    final values = ganadero == null
+                        ? Ganadero(
+                            id: '',
+                            nombre: nombre,
+                            apellidoPaterno: apellidoPaterno,
+                            apellidoMaterno: apellidoMaterno,
+                            rancho: rancho,
+                            tel: tel,
+                          )
+                        : ganadero.copyWith(
+                            nombre: nombre,
+                            apellidoPaterno: apellidoPaterno,
+                            apellidoMaterno: apellidoMaterno,
+                            rancho: rancho,
+                            tel: tel,
+                          );
 
                     try {
                       if (ganadero == null) {
@@ -161,13 +165,29 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                   },
                   child: Text(ganadero == null ? 'Guardar Ganadero' : 'Guardar Cambios'),
                 ),
-                const SizedBox(height: 20),
               ],
             ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(sheetContext),
+            child: const Text('Cancelar'),
+          ),
+        ],
       ),
     );
+
+    // Esperar a que la animación de cierre del dialog termine antes de liberar los controladores
+    // para evitar el error "TextEditingController was used after being disposed"
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+
+    nombreController.dispose();
+    apellidoPaternoController.dispose();
+    apellidoMaternoController.dispose();
+    ranchoController.dispose();
+    telController.dispose();
   }
 
   Future<void> _confirmDelete(Ganadero ganadero) async {

@@ -118,5 +118,59 @@ class DatabaseMigrator {
         await db.execute('ALTER TABLE ${MedicionesTable.tableName} ADD COLUMN ${MedicionesTable.columnPdfPath} TEXT');
       }
     }
+    if (oldVersion < 7) {
+      // Migración v7: Estandarización de tipos en Mediciones a REAL
+      // Creamos una tabla temporal sin claves foráneas temporalmente
+      await db.execute('''
+        CREATE TABLE mediciones_v7_temp (
+          ${MedicionesTable.columnId} TEXT PRIMARY KEY,
+          ${MedicionesTable.columnClienteId} TEXT NOT NULL DEFAULT '$defaultClienteId',
+          ${MedicionesTable.columnGanaderoId} TEXT NOT NULL,
+          ${MedicionesTable.columnDispositivoId} TEXT,
+          ${MedicionesTable.columnUsuarioId} TEXT,
+          ${MedicionesTable.columnPh} REAL NOT NULL,
+          ${MedicionesTable.columnDensidad} REAL NOT NULL,
+          ${MedicionesTable.columnTemperatura} REAL NOT NULL,
+          ${MedicionesTable.columnFecha} TEXT NOT NULL,
+          ${MedicionesTable.columnObservaciones} TEXT NOT NULL,
+          ${MedicionesTable.columnSincronizado} INTEGER NOT NULL DEFAULT 0,
+          ${MedicionesTable.columnFechaSincronizacion} TEXT,
+          ${MedicionesTable.columnPdfPath} TEXT
+        )
+      ''');
+
+      // Copiamos datos casteando (reemplazando cualquier caracter extraño o cadena no parseable por 0.0)
+      await db.execute('''
+        INSERT INTO mediciones_v7_temp
+        SELECT id, cliente_id, ganadero_id, dispositivo_id, usuario_id,
+               CAST(ph AS REAL), CAST(densidad AS REAL), CAST(temperatura AS REAL),
+               fecha, observaciones, sincronizado, fecha_sincronizacion, pdf_path
+        FROM ${MedicionesTable.tableName}
+      ''');
+
+      // Recreamos tabla original y restauramos relaciones y Foreign Keys
+      await db.execute('DROP TABLE ${MedicionesTable.tableName}');
+      await db.execute(MedicionesTable.createTableQuery); 
+      await db.execute('''
+        INSERT INTO ${MedicionesTable.tableName}
+        SELECT * FROM mediciones_v7_temp
+      ''');
+      await db.execute('DROP TABLE mediciones_v7_temp');
+      
+      // Recrear índices B-Tree de rendimiento
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_cliente_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnClienteId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_ganadero_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnGanaderoId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_usuario_id ON ${MedicionesTable.tableName}(${MedicionesTable.columnUsuarioId})');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_mediciones_sincronizado ON ${MedicionesTable.tableName}(${MedicionesTable.columnSincronizado})');
+    }
+
+    if (oldVersion < 8) {
+      // Migración v8: Agregar columna sincronizado a la tabla usuarios
+      final usuariosInfo = await db.rawQuery("PRAGMA table_info(${UsuariosTable.tableName})");
+      final hasSincronizado = usuariosInfo.any((c) => c['name'] == UsuariosTable.columnSincronizado);
+      if (!hasSincronizado) {
+        await db.execute('ALTER TABLE ${UsuariosTable.tableName} ADD COLUMN ${UsuariosTable.columnSincronizado} INTEGER NOT NULL DEFAULT 0');
+      }
+    }
   }
 }

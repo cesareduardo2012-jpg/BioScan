@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import '../database/dao/ganadero_dao.dart';
 import '../models/ganadero.dart';
+import '../utils/supabase_config.dart';
 
 abstract class GanaderoRepository {
   Future<List<Ganadero>> getGanaderos();
+  Future<List<Ganadero>> getUnsynced();
   Future<Ganadero?> getGanaderoById(String id);
   Future<List<Ganadero>> getGanaderosByCliente(String clienteId);
   Future<void> insertGanadero(Ganadero ganadero);
@@ -18,6 +20,9 @@ class GanaderoRepositoryImpl implements GanaderoRepository {
 
   @override
   Future<List<Ganadero>> getGanaderos() => _ganaderoDao.getAll();
+
+  @override
+  Future<List<Ganadero>> getUnsynced() => _ganaderoDao.getUnsynced();
 
   @override
   Future<Ganadero?> getGanaderoById(String id) => _ganaderoDao.getById(id);
@@ -44,6 +49,14 @@ class GanaderoRepositoryImpl implements GanaderoRepository {
   @override
   Future<void> deleteGanadero(String id) async {
     debugPrint('[GANADERO REPOSITORY] Eliminando ganadero ID: $id');
+    if (SupabaseConfig.isInitialized) {
+      try {
+        await SupabaseConfig.client.from('ganaderos').delete().eq('id', id);
+        debugPrint('[GANADERO REPOSITORY] Eliminado de Supabase exitosamente.');
+      } catch (e) {
+        debugPrint('[GANADERO REPOSITORY] Aviso: No se pudo eliminar de Supabase: $e');
+      }
+    }
     await _ganaderoDao.delete(id);
   }
 }

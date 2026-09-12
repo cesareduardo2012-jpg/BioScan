@@ -54,7 +54,7 @@ class Cliente {
       empresa: map['empresa']?.toString() ?? '',
       telefono: map['telefono']?.toString() ?? '',
       correo: map['correo']?.toString() ?? '',
-      fechaRegistro: map['fecha_registro']?.toString() ?? DateTime.now().toIso8601String(),
+      fechaRegistro: (map['fecha_registro'] ?? map['created_at'])?.toString() ?? DateTime.now().toIso8601String(),
       activo: map['activo'] == 1 || map['activo'] == true,
     );
   }

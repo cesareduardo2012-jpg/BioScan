@@ -4,16 +4,29 @@ import '../../models/ganadero.dart';
 import '../app_database.dart';
 import '../tables/ganaderos_table.dart';
 
+List<Ganadero> _mapGanaderosList(List<Map<String, Object?>> maps) {
+  return maps.map((map) => Ganadero.fromMap(map)).toList();
+}
+
 class GanaderoDao {
   final AppDatabase _database;
 
   GanaderoDao(this._database);
 
   Future<List<Ganadero>> getAll() async {
-    debugPrint('[SQLITE DAO] Obteniendo todos los ganaderos de la tabla "${GanaderosTable.tableName}"...');
-    final maps = await _database.db.query(GanaderosTable.tableName);
-    debugPrint('[SQLITE DAO] Registros totales recuperados: ${maps.length}');
-    return maps.map((map) => Ganadero.fromMap(map)).toList();
+    final maps = await _database.db.query(
+      GanaderosTable.tableName,
+      orderBy: '${GanaderosTable.columnNombre} ASC',
+    );
+    return compute(_mapGanaderosList, maps);
+  }
+
+  Future<List<Ganadero>> getUnsynced() async {
+    final maps = await _database.db.query(
+      GanaderosTable.tableName,
+      where: '${GanaderosTable.columnSincronizado} = 0',
+    );
+    return compute(_mapGanaderosList, maps);
   }
 
   Future<Ganadero?> getById(String id) async {

@@ -25,6 +25,8 @@ class SyncServiceImpl implements SyncService {
   final GanaderoRepository _ganaderoRepository;
   final MedicionRepository _medicionRepository;
 
+  bool _isSyncing = false;
+
   SyncServiceImpl(
     this._clienteRepository,
     this._usuarioRepository,
@@ -36,16 +38,23 @@ class SyncServiceImpl implements SyncService {
   @override
   Future<void> syncAll() async {
     if (!SupabaseConfig.isInitialized) return;
+    if (_isSyncing) {
+      debugPrint('[SYNC SERVICE] Sincronización ya en curso. Omitiendo...');
+      return;
+    }
+    _isSyncing = true;
     try {
       debugPrint('[SYNC SERVICE] Iniciando sincronización bidireccional completa con Supabase Nube...');
-      // 1. Descargar cambios remotos primero para poblar SQLite local
-      await downloadChanges();
-      // 2. Subir registros locales que no estén sincronizados
+      // 1. Subir registros locales que no estén sincronizados primero
       await syncPendingRecords();
+      // 2. Descargar cambios remotos para poblar SQLite local
+      await downloadChanges();
       debugPrint('[SYNC SERVICE] Sincronización bidireccional completada con éxito.');
     } catch (e, st) {
       debugPrint('[SYNC SERVICE ERROR] Error durante syncAll: $e');
       debugPrint(st.toString());
+    } finally {
+      _isSyncing = false;
     }
   }
 
@@ -59,6 +68,8 @@ class SyncServiceImpl implements SyncService {
       // 1. Sincronizar Cuentas/Clientes a Supabase Nube
       final clientes = await _clienteRepository.getClientes();
       for (var cliente in clientes) {
+        // No sincronizar la cuenta demo local
+        if (cliente.id == '00000000-0000-0000-0000-000000000001') continue;
         try {
           await client.from('cuentas').upsert({
             'id': cliente.id,
@@ -67,7 +78,7 @@ class SyncServiceImpl implements SyncService {
             'telefono': cliente.telefono,
             'correo': cliente.correo,
             'activo': cliente.activo,
-          });
+          }, onConflict: 'id');
           debugPrint('Cliente/Cuenta ${cliente.nombre} (${cliente.id}) respaldado en Supabase Nube.');
         } catch (e) {
           debugPrint('Error al respaldar cliente ${cliente.id} en Supabase: $e');
@@ -77,6 +88,7 @@ class SyncServiceImpl implements SyncService {
       // 2. Sincronizar Dispositivos a Supabase Nube
       final dispositivos = await _dispositivoRepository.getDispositivos();
       for (var disp in dispositivos) {
+        if (disp.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
           await client.from('dispositivos').upsert({
             'id': disp.id,
@@ -85,7 +97,7 @@ class SyncServiceImpl implements SyncService {
             'nombre': disp.nombre,
             'modelo': disp.modelo,
             'activo': disp.activo,
-          });
+          }, onConflict: 'id');
           debugPrint('Dispositivo ${disp.nombre} respaldado en Supabase Nube.');
         } catch (e) {
           debugPrint('Error al respaldar dispositivo ${disp.id} en Supabase: $e');
@@ -95,6 +107,8 @@ class SyncServiceImpl implements SyncService {
       // 3. Sincronizar Usuarios a Supabase Nube
       final usuarios = await _usuarioRepository.getUsuarios();
       for (var usr in usuarios) {
+        if (usr.clienteId == '00000000-0000-0000-0000-000000000001') continue;
+        if (usr.sincronizado) continue;
         try {
           await client.from('usuarios').upsert({
             'id': usr.id,
@@ -104,7 +118,12 @@ class SyncServiceImpl implements SyncService {
             'correo': usr.correo,
             'rol': usr.rol,
             'activo': usr.activo,
-          });
+          }, onConflict: 'id');
+
+          if (!usr.sincronizado) {
+            final updated = usr.copyWith(sincronizado: true);
+            await _usuarioRepository.updateUsuario(updated);
+          }
           debugPrint('Usuario ${usr.username} respaldado en Supabase Nube.');
         } catch (e) {
           debugPrint('Error al respaldar usuario ${usr.id} en Supabase: $e');
@@ -112,10 +131,11 @@ class SyncServiceImpl implements SyncService {
       }
 
       // 4. Sincronizar Ganaderos a Supabase Nube
-      final ganaderos = await _ganaderoRepository.getGanaderos();
+      final ganaderos = await _ganaderoRepository.getUnsynced();
       for (var ganadero in ganaderos) {
+        if (ganadero.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
-          await client.from('ganaderos').upsert({
+          final payload = {
             'id': ganadero.id,
             'cuenta_id': ganadero.clienteId,
             'nombre': ganadero.nombre,
@@ -123,8 +143,12 @@ class SyncServiceImpl implements SyncService {
             'apellido_materno': ganadero.apellidoMaterno,
             'rancho': ganadero.rancho,
             'telefono': ganadero.tel,
-            'fecha_registro': ganadero.fechaRegistro,
-          });
+          };
+          if (ganadero.fechaRegistro.isNotEmpty) {
+            payload['fecha_registro'] = ganadero.fechaRegistro;
+          }
+
+          await client.from('ganaderos').upsert(payload, onConflict: 'id');
 
           if (!ganadero.sincronizado) {
             final updated = ganadero.copyWith(sincronizado: true);
@@ -137,21 +161,26 @@ class SyncServiceImpl implements SyncService {
       }
 
       // 5. Sincronizar Mediciones a Supabase Nube
-      final mediciones = await _medicionRepository.getMediciones();
+      final mediciones = await _medicionRepository.getUnsynced();
       for (var medicion in mediciones) {
+        if (medicion.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
-          await client.from('mediciones').upsert({
+          final payload = {
             'id': medicion.id,
             'cuenta_id': medicion.clienteId,
             'ganadero_id': medicion.ganaderoId,
             'dispositivo_id': medicion.dispositivoId,
             'usuario_id': medicion.usuarioId,
+            'densidad': medicion.densidad,
             'ph': medicion.ph,
-            'densidad': medicion.agua,
             'temperatura': medicion.temperatura,
-            'fecha': medicion.fecha,
             'observaciones': medicion.observaciones,
-          });
+          };
+          if (medicion.fecha.isNotEmpty) {
+            payload['fecha'] = medicion.fecha;
+          }
+
+          await client.from('mediciones').upsert(payload, onConflict: 'id');
 
           if (!medicion.sincronizado) {
             final updated = medicion.copyWith(
@@ -212,11 +241,13 @@ class SyncServiceImpl implements SyncService {
       try {
         final usrData = await client.from('usuarios').select();
         for (var map in usrData) {
-          final usr = Usuario.fromMap(map);
+          final usr = Usuario.fromMap(map).copyWith(sincronizado: true);
           final localExisting = await _usuarioRepository.getUsuarioById(usr.id);
           if (localExisting == null) {
             await _usuarioRepository.insertUsuario(usr);
           } else {
+            // No sobrescribir si el registro local tiene cambios pendientes por subir
+            if (!localExisting.sincronizado) continue;
             await _usuarioRepository.updateUsuario(usr);
           }
         }
@@ -233,6 +264,8 @@ class SyncServiceImpl implements SyncService {
           if (localExisting == null) {
             await _ganaderoRepository.insertGanadero(ganaderoRemote);
           } else {
+            // No sobrescribir si el registro local tiene cambios pendientes por subir
+            if (!localExisting.sincronizado) continue;
             await _ganaderoRepository.updateGanadero(ganaderoRemote);
           }
         }
@@ -249,6 +282,8 @@ class SyncServiceImpl implements SyncService {
           if (localExisting == null) {
             await _medicionRepository.insertMedicion(medicionRemote);
           } else {
+            // No sobrescribir si el registro local tiene cambios pendientes por subir
+            if (!localExisting.sincronizado) continue;
             await _medicionRepository.updateMedicion(medicionRemote);
           }
         }

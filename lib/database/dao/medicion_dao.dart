@@ -1,9 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../models/medicion.dart';
 import '../app_database.dart';
 import '../tables/mediciones_table.dart';
-
 import '../tables/ganaderos_table.dart';
+
+List<Medicion> _mapMedicionesList(List<Map<String, Object?>> maps) {
+  return maps.map((map) => Medicion.fromMap(map)).toList();
+}
 
 class MedicionDao {
   final AppDatabase _database;
@@ -15,7 +19,15 @@ class MedicionDao {
       MedicionesTable.tableName,
       orderBy: '${MedicionesTable.columnFecha} DESC',
     );
-    return maps.map((map) => Medicion.fromMap(map)).toList();
+    return compute(_mapMedicionesList, maps);
+  }
+
+  Future<List<Medicion>> getUnsynced() async {
+    final maps = await _database.db.query(
+      MedicionesTable.tableName,
+      where: '${MedicionesTable.columnSincronizado} = 0',
+    );
+    return compute(_mapMedicionesList, maps);
   }
 
   Future<Medicion?> getById(String id) async {
@@ -35,7 +47,7 @@ class MedicionDao {
       whereArgs: [ganaderoId],
       orderBy: '${MedicionesTable.columnFecha} DESC',
     );
-    return maps.map((map) => Medicion.fromMap(map)).toList();
+    return compute(_mapMedicionesList, maps);
   }
 
   Future<List<Medicion>> getByClienteId(String clienteId) async {
@@ -45,7 +57,7 @@ class MedicionDao {
       WHERE m.${MedicionesTable.columnClienteId} = ? OR g.${GanaderosTable.columnClienteId} = ?
       ORDER BY m.${MedicionesTable.columnFecha} DESC
     ''', [clienteId, clienteId]);
-    return maps.map((map) => Medicion.fromMap(map)).toList();
+    return compute(_mapMedicionesList, maps);
   }
 
   Future<List<Medicion>> getByDispositivoId(String dispositivoId) async {
@@ -55,7 +67,7 @@ class MedicionDao {
       whereArgs: [dispositivoId],
       orderBy: '${MedicionesTable.columnFecha} DESC',
     );
-    return maps.map((map) => Medicion.fromMap(map)).toList();
+    return compute(_mapMedicionesList, maps);
   }
 
   Future<void> insert(Medicion medicion) async {
