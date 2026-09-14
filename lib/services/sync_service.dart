@@ -167,17 +167,30 @@ class SyncServiceImpl implements SyncService {
       for (var medicion in mediciones) {
         if (medicion.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
-          final payload = {
+          final payload = <String, dynamic>{
             'id': medicion.id,
             'cuenta_id': medicion.clienteId,
             'ganadero_id': medicion.ganaderoId,
             'dispositivo_id': medicion.dispositivoId,
             'usuario_id': medicion.usuarioId,
-            'densidad': medicion.densidad,
-            'ph': medicion.ph,
-            'temperatura': medicion.temperatura,
             'observaciones': medicion.observaciones,
           };
+
+          // ph/densidad/temperatura son columnas NUMERIC en Supabase, pero
+          // localmente son texto libre del sensor ("N/D" mientras no hay
+          // lectura, o con sufijos como "%"/"°C" según el formato que mande
+          // el ESP32). Mandar ese texto tal cual rompía el upsert COMPLETO
+          // del registro (columna numérica recibiendo texto no numérico),
+          // el mismo patrón silencioso que ya se corrigió para ganaderos.
+          // Si no se puede extraer un número real, se omite la clave para
+          // que Postgres use su propio valor por defecto en vez de fallar.
+          final densVal = _parseSensorNumber(medicion.densidad);
+          if (densVal != null) payload['densidad'] = densVal;
+          final phVal = _parseSensorNumber(medicion.ph);
+          if (phVal != null) payload['ph'] = phVal;
+          final tempVal = _parseSensorNumber(medicion.temperatura);
+          if (tempVal != null) payload['temperatura'] = tempVal;
+
           if (medicion.fecha.isNotEmpty) {
             payload['fecha'] = medicion.fecha;
           }
@@ -304,4 +317,13 @@ class SyncServiceImpl implements SyncService {
     if (!SupabaseConfig.isInitialized) return;
     debugPrint('Resolución de conflictos verificada.');
   }
+}
+
+/// Extrae el primer número (puede ser negativo) de una lectura de sensor en
+/// formato libre -- ej. "24.44", "5%", "-0.026", "N/D" -- devolviendo null
+/// si no hay ningún número parseable.
+double? _parseSensorNumber(String raw) {
+  final match = RegExp(r'-?[0-9]+(?:\.[0-9]+)?').firstMatch(raw);
+  if (match == null) return null;
+  return double.tryParse(match.group(0)!);
 }
