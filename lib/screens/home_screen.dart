@@ -799,18 +799,28 @@ class _HomeScreenState extends State<HomeScreen> {
                         final clienteId = widget.cliente?.id ?? ServiceLocator.authService.activeClienteId;
                         final connectedDevice = btManager.connectedDevice;
 
-                        // Registrar dispositivo si existe
+                        // Registrar dispositivo si existe. El id local/remoto debe ser un
+                        // UUID real (la columna dispositivos.id/mediciones.dispositivo_id en
+                        // Supabase es tipo UUID) -- la MAC del ESP32 ("D4:E9:F4:BB:41:2A")
+                        // no es un UUID válido y Postgrest rechazaba el upsert completo de
+                        // la medición por ese campo. La MAC se guarda en numeroSerie, y se
+                        // reutiliza el mismo id si el dispositivo ya se había registrado
+                        // antes (buscado por esa MAC) en vez de generar uno nuevo cada vez.
+                        Dispositivo? dispositivo;
                         if (connectedDevice != null) {
-                          await ServiceLocator.dispositivoRepository.insertDispositivo(
-                            Dispositivo(
-                              id: connectedDevice.remoteId.toString(),
+                          final mac = connectedDevice.remoteId.toString();
+                          dispositivo = await ServiceLocator.dispositivoRepository.getDispositivoByNumeroSerie(mac);
+                          if (dispositivo == null) {
+                            dispositivo = Dispositivo(
+                              id: UuidGenerator.generate(),
                               clienteId: clienteId,
-                              numeroSerie: connectedDevice.remoteId.toString(),
+                              numeroSerie: mac,
                               nombre: connectedDevice.platformName.isNotEmpty ? connectedDevice.platformName : 'Sensor ESP32',
                               modelo: 'ESP32 BioScan',
                               fechaRegistro: DateTime.now().toIso8601String(),
-                            ),
-                          );
+                            );
+                            await ServiceLocator.dispositivoRepository.insertDispositivo(dispositivo);
+                          }
                         }
 
                         final medicionId = UuidGenerator.generate();
@@ -818,12 +828,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           id: medicionId,
                           clienteId: clienteId,
                           ganaderoId: selectedGanadero.id,
-                          dispositivoId: connectedDevice?.remoteId.toString(),
+                          dispositivoId: dispositivo?.id,
                           usuarioId: widget.usuario?.id ?? ServiceLocator.authService.currentUser?.id,
                           ph: _phCapturado ?? 'N/D',
                           agua: _densidadCapturada ?? 'N/D',
                           temperatura: _tempCapturada ?? 'N/D',
-                          fecha: DateTime.now().toIso8601String(),
+                          fecha: DateTime.now().toUtc().toIso8601String(),
                           observaciones: btManager.latestRawLine,
                           sincronizado: false,
                         );
@@ -836,16 +846,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ganadero: selectedGanadero,
                             cliente: widget.cliente,
                             usuario: widget.usuario,
-                            dispositivo: connectedDevice != null
-                                ? Dispositivo(
-                                    id: connectedDevice.remoteId.toString(),
-                                    clienteId: clienteId,
-                                    numeroSerie: connectedDevice.remoteId.toString(),
-                                    nombre: connectedDevice.platformName.isNotEmpty ? connectedDevice.platformName : 'Sensor ESP32',
-                                    modelo: 'ESP32 BioScan',
-                                    fechaRegistro: DateTime.now().toIso8601String(),
-                                  )
-                                : null,
+                            dispositivo: dispositivo,
                           );
                         } catch (e) {
                           debugPrint('Error guardando archivo PDF local: $e');
