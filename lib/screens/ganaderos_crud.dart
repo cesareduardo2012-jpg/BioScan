@@ -24,157 +24,221 @@ class GanaderosCRUD extends StatefulWidget {
 class _GanaderosCRUDState extends State<GanaderosCRUD> {
   Future<void> _showForm({Ganadero? ganadero}) async {
     final formKey = GlobalKey<FormState>();
-    final nombreController = TextEditingController(text: ganadero?.nombre ?? '');
-    final apellidoPaternoController = TextEditingController(text: ganadero?.apellidoPaterno ?? '');
-    final apellidoMaternoController = TextEditingController(text: ganadero?.apellidoMaterno ?? '');
-    final ranchoController = TextEditingController(text: ganadero?.rancho ?? '');
+    final nombreController = TextEditingController(
+      text: ganadero?.nombre ?? '',
+    );
+    final apellidoPaternoController = TextEditingController(
+      text: ganadero?.apellidoPaterno ?? '',
+    );
+    final apellidoMaternoController = TextEditingController(
+      text: ganadero?.apellidoMaterno ?? '',
+    );
+    final ranchoController = TextEditingController(
+      text: ganadero?.rancho ?? '',
+    );
     final telController = TextEditingController(text: ganadero?.tel ?? '');
+    // Declarado fuera del builder de StatefulBuilder para que persista entre
+    // rebuilds del diálogo (evita doble-tap: sin este guard, tocar rápido
+    // dos veces "Guardar" disparaba dos inserciones/ediciones concurrentes
+    // antes de que el primer await terminara y cerrara el diálogo).
+    var isSubmitting = false;
 
     await showDialog(
       context: context,
-      builder: (sheetContext) => AlertDialog(
-        title: Text(ganadero == null ? 'Nuevo Ganadero' : 'Editar Ganadero'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nombreController,
-                  decoration: const InputDecoration(labelText: 'Nombre'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Por favor ingresa el nombre';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: apellidoPaternoController,
-                  decoration: const InputDecoration(labelText: 'Apellido Paterno'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Por favor ingresa el apellido paterno';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: apellidoMaternoController,
-                  decoration: const InputDecoration(labelText: 'Apellido Materno'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Por favor ingresa el apellido materno';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: ranchoController,
-                  decoration: const InputDecoration(labelText: 'Nombre del Rancho'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Por favor ingresa el nombre del rancho';
-                    }
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: telController,
-                  decoration: const InputDecoration(labelText: 'Teléfono'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Por favor ingresa el teléfono';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () async {
-                    debugPrint('\n================================================================');
-                    debugPrint('[GANADERO UI] Botón guardar presionado');
-                    if (!formKey.currentState!.validate()) {
-                      debugPrint('[GANADERO UI] Validación de formulario falló. Revise los campos.');
-                      return;
-                    }
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (statefulContext, setDialogState) => AlertDialog(
+          title: Text(ganadero == null ? 'Nuevo Ganadero' : 'Editar Ganadero'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nombreController,
+                    decoration: const InputDecoration(labelText: 'Nombre'),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Por favor ingresa el nombre';
+                      }
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: apellidoPaternoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Apellido Paterno',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Por favor ingresa el apellido paterno';
+                      }
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: apellidoMaternoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Apellido Materno',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Por favor ingresa el apellido materno';
+                      }
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: ranchoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre del Rancho',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Por favor ingresa el nombre del rancho';
+                      }
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: telController,
+                    decoration: const InputDecoration(labelText: 'Teléfono'),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Por favor ingresa el teléfono';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            debugPrint(
+                              '\n================================================================',
+                            );
+                            debugPrint(
+                              '[GANADERO UI] Botón guardar presionado',
+                            );
+                            if (!formKey.currentState!.validate()) {
+                              debugPrint(
+                                '[GANADERO UI] Validación de formulario falló. Revise los campos.',
+                              );
+                              return;
+                            }
 
-                    final nombre = nombreController.text.trim();
-                    final apellidoPaterno = apellidoPaternoController.text.trim();
-                    final apellidoMaterno = apellidoMaternoController.text.trim();
-                    final rancho = ranchoController.text.trim();
-                    final tel = telController.text.trim();
+                            setDialogState(() => isSubmitting = true);
 
-                    debugPrint('[GANADERO UI] Datos ingresados:');
-                    debugPrint('  nombre = $nombre');
-                    debugPrint('  apellidoPaterno = $apellidoPaterno');
-                    debugPrint('  apellidoMaterno = $apellidoMaterno');
-                    debugPrint('  rancho = $rancho');
-                    debugPrint('  telefono = $tel');
+                            final nombre = nombreController.text.trim();
+                            final apellidoPaterno = apellidoPaternoController
+                                .text
+                                .trim();
+                            final apellidoMaterno = apellidoMaternoController
+                                .text
+                                .trim();
+                            final rancho = ranchoController.text.trim();
+                            final tel = telController.text.trim();
 
-                    final values = ganadero == null
-                        ? Ganadero(
-                            id: '',
-                            nombre: nombre,
-                            apellidoPaterno: apellidoPaterno,
-                            apellidoMaterno: apellidoMaterno,
-                            rancho: rancho,
-                            tel: tel,
+                            debugPrint('[GANADERO UI] Datos ingresados:');
+                            debugPrint('  nombre = $nombre');
+                            debugPrint('  apellidoPaterno = $apellidoPaterno');
+                            debugPrint('  apellidoMaterno = $apellidoMaterno');
+                            debugPrint('  rancho = $rancho');
+                            debugPrint('  telefono = $tel');
+
+                            final values = ganadero == null
+                                ? Ganadero(
+                                    id: '',
+                                    nombre: nombre,
+                                    apellidoPaterno: apellidoPaterno,
+                                    apellidoMaterno: apellidoMaterno,
+                                    rancho: rancho,
+                                    tel: tel,
+                                  )
+                                : ganadero.copyWith(
+                                    nombre: nombre,
+                                    apellidoPaterno: apellidoPaterno,
+                                    apellidoMaterno: apellidoMaterno,
+                                    rancho: rancho,
+                                    tel: tel,
+                                  );
+
+                            try {
+                              if (ganadero == null) {
+                                debugPrint(
+                                  '[GANADERO UI] Invocando callback widget.onAddGanadero...',
+                                );
+                                await widget.onAddGanadero(values);
+                                debugPrint(
+                                  '[GANADERO UI] widget.onAddGanadero completado con éxito.',
+                                );
+                              } else {
+                                debugPrint(
+                                  '[GANADERO UI] Invocando callback widget.onEditGanadero...',
+                                );
+                                await widget.onEditGanadero(values);
+                                debugPrint(
+                                  '[GANADERO UI] widget.onEditGanadero completado con éxito.',
+                                );
+                              }
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                            } catch (e, stackTrace) {
+                              debugPrint(
+                                '[GANADERO UI ERROR] Excepción al guardar ganadero: $e',
+                              );
+                              debugPrint(stackTrace.toString());
+                              setDialogState(() => isSubmitting = false);
+                              if (mounted) {
+                                showDialog(
+                                  context: context,
+                                  builder: (dialogContext) => AlertDialog(
+                                    title: const Text('Error al guardar'),
+                                    content: Text(
+                                      'No se pudo guardar el ganadero: $e',
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(dialogContext),
+                                        child: const Text('Cerrar'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    child: isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
-                        : ganadero.copyWith(
-                            nombre: nombre,
-                            apellidoPaterno: apellidoPaterno,
-                            apellidoMaterno: apellidoMaterno,
-                            rancho: rancho,
-                            tel: tel,
-                          );
-
-                    try {
-                      if (ganadero == null) {
-                        debugPrint('[GANADERO UI] Invocando callback widget.onAddGanadero...');
-                        await widget.onAddGanadero(values);
-                        debugPrint('[GANADERO UI] widget.onAddGanadero completado con éxito.');
-                      } else {
-                        debugPrint('[GANADERO UI] Invocando callback widget.onEditGanadero...');
-                        await widget.onEditGanadero(values);
-                        debugPrint('[GANADERO UI] widget.onEditGanadero completado con éxito.');
-                      }
-                      if (sheetContext.mounted) {
-                        Navigator.pop(sheetContext);
-                      }
-                    } catch (e, stackTrace) {
-                      debugPrint('[GANADERO UI ERROR] Excepción al guardar ganadero: $e');
-                      debugPrint(stackTrace.toString());
-                      if (mounted) {
-                        showDialog(
-                          context: context,
-                          builder: (dialogContext) => AlertDialog(
-                            title: const Text('Error al guardar'),
-                            content: Text('No se pudo guardar el ganadero: $e'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialogContext),
-                                child: const Text('Cerrar'),
-                              ),
-                            ],
+                        : Text(
+                            ganadero == null
+                                ? 'Guardar Ganadero'
+                                : 'Guardar Cambios',
                           ),
-                        );
-                      }
-                    }
-                  },
-                  child: Text(ganadero == null ? 'Guardar Ganadero' : 'Guardar Cambios'),
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: isSubmitting
+                  ? null
+                  : () => Navigator.pop(sheetContext),
+              child: const Text('Cancelar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(sheetContext),
-            child: const Text('Cancelar'),
-          ),
-        ],
       ),
     );
 
@@ -197,8 +261,14 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
         title: const Text('Eliminar ganadero'),
         content: Text('¿Deseas eliminar a ${ganadero.nombreCompleto}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Eliminar')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Eliminar'),
+          ),
         ],
       ),
     );
@@ -232,7 +302,10 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Gestión de Ganaderos')),
-      floatingActionButton: FloatingActionButton(onPressed: () => _showForm(), child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showForm(),
+        child: const Icon(Icons.add),
+      ),
       body: RefreshIndicator(
         onRefresh: widget.onRefresh ?? () async {},
         child: widget.ganaderos.isEmpty
@@ -240,7 +313,12 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 120),
-                  Center(child: Text('No hay ganaderos registrados aún\nDesliza hacia abajo para sincronizar con la nube', textAlign: TextAlign.center)),
+                  Center(
+                    child: Text(
+                      'No hay ganaderos registrados aún\nDesliza hacia abajo para sincronizar con la nube',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 ],
               )
             : ListView.builder(
@@ -249,15 +327,26 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                 itemBuilder: (ctx, i) {
                   final ganadero = widget.ganaderos[i];
                   return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 15,
+                      vertical: 5,
+                    ),
                     child: ListTile(
                       title: Text(ganadero.nombreCompleto),
-                      subtitle: Text('Rancho: ${ganadero.rancho} • Tel: ${ganadero.tel}'),
+                      subtitle: Text(
+                        'Rancho: ${ganadero.rancho} • Tel: ${ganadero.tel}',
+                      ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showForm(ganadero: ganadero)),
-                          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _confirmDelete(ganadero)),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => _showForm(ganadero: ganadero),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _confirmDelete(ganadero),
+                          ),
                         ],
                       ),
                     ),
