@@ -193,6 +193,13 @@ class BluetoothManager extends ChangeNotifier {
     phActual = "N/D";
     temperaturaActual = "N/D";
     densidadActual = "N/D";
+    // Limpiar el buffer acumulado: si no se vacía aquí, la próxima muestra
+    // (sin desconectar el dispositivo entre pruebas) puede re-parsear datos
+    // de la muestra ANTERIOR en cuanto se toque "Iniciar Prueba" -- el
+    // parseo inmediato de startMeasurement() usaría el buffer viejo antes
+    // de que el ESP32 mande un solo byte nuevo de la muestra actual.
+    receivedData = "";
+    latestRawLine = "";
     notifyListeners();
   }
 
