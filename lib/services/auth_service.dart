@@ -189,12 +189,16 @@ class AuthService extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('Supabase Auth error: $e');
-        // Si el error viene de Supabase Auth (ej. credenciales inválidas o correo no confirmado)
-        // debemos informarlo en lugar de ocultarlo y buscar en SQLite.
+        // Si el error viene de Supabase Auth debemos informarlo en lugar de
+        // ocultarlo... EXCEPTO "credenciales inválidas": ese es exactamente
+        // el error que da Supabase para el admin sembrado localmente
+        // (ensureDefaultAdmin) porque nunca se crea como usuario real en
+        // Supabase Auth. Lanzar aquí bloqueaba permanentemente el login del
+        // admin documentado (admin/admin123) en cualquier dispositivo con
+        // internet, sin darle nunca la oportunidad de caer al respaldo local
+        // de abajo. Para ese caso sí dejamos pasar al fallback de SQLite.
         final errorString = e.toString().toLowerCase();
-        if (errorString.contains('invalid login credentials')) {
-          throw AuthException('Credenciales incorrectas en la nube. Verifica tu usuario y contraseña.');
-        } else if (errorString.contains('email not confirmed')) {
+        if (errorString.contains('email not confirmed')) {
           throw AuthException('Debes confirmar tu correo electrónico antes de iniciar sesión.');
         } else if (e.runtimeType.toString() == 'AuthException') {
            // Lanzamos el error exacto que nos da Supabase
