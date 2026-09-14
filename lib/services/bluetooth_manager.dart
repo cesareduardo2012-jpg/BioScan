@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,19 @@ class BluetoothManager extends ChangeNotifier {
 
   bool isMeasurementActive = false;
   bool isSimulationMode = false;
+
+  StreamSubscription<BluetoothConnectionState>? _connectionStateSub;
+
+  /// Mensaje de una sola lectura para que la UI avise al usuario cuando el
+  /// dispositivo se desconectó solo (batería, fuera de rango) en vez de por
+  /// una acción explícita de "Desconectar". Se limpia con [consumeConnectionLostMessage].
+  String? connectionLostMessage;
+
+  String? consumeConnectionLostMessage() {
+    final msg = connectionLostMessage;
+    connectionLostMessage = null;
+    return msg;
+  }
 
   void init() {
     FlutterBluePlus.scanResults.listen((results) {
@@ -128,8 +142,30 @@ class BluetoothManager extends ChangeNotifier {
       phActual = "N/D";
       temperaturaActual = "N/D";
       densidadActual = "N/D";
+      connectionLostMessage = null;
       notifyListeners();
       _discoverServices(device);
+
+      // Detectar desconexión inesperada (batería, fuera de rango, Bluetooth
+      // apagado): sin esto, connectedDevice/isMeasurementActive se quedaban
+      // "vivos" con la última lectura congelada, y la UI seguía mostrando
+      // "Recibiendo datos en tiempo real" de una conexión ya muerta -- el
+      // usuario podía completar y guardar un análisis entero con datos de
+      // una conexión que ya no existía, sin ningún aviso.
+      _connectionStateSub?.cancel();
+      _connectionStateSub = device.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected && connectedDevice?.remoteId == device.remoteId) {
+          connectedDevice = null;
+          receivedData = "";
+          latestRawLine = "";
+          isMeasurementActive = false;
+          phActual = "N/D";
+          temperaturaActual = "N/D";
+          densidadActual = "N/D";
+          connectionLostMessage = 'Se perdió la conexión con el sensor ESP32. Vuelve a conectarlo para continuar.';
+          notifyListeners();
+        }
+      });
     } catch (e) {
       debugPrint("Error al conectar: $e");
       onError();
@@ -150,6 +186,8 @@ class BluetoothManager extends ChangeNotifier {
     }
 
     if (connectedDevice != null) {
+      await _connectionStateSub?.cancel();
+      _connectionStateSub = null;
       await connectedDevice!.disconnect();
       connectedDevice = null;
       receivedData = "";
@@ -158,6 +196,7 @@ class BluetoothManager extends ChangeNotifier {
       phActual = "N/D";
       temperaturaActual = "N/D";
       densidadActual = "N/D";
+      connectionLostMessage = null;
       notifyListeners();
     }
   }

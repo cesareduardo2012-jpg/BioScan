@@ -62,9 +62,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onBluetoothStateChanged() {
-    if (mounted) {
-      setState(() {});
+    if (!mounted) return;
+    final lostMessage = BluetoothManager.instance.consumeConnectionLostMessage();
+    if (lostMessage != null) {
+      // La conexión se cayó sola (batería, fuera de rango, Bluetooth
+      // apagado): no tiene sentido seguir en medio del asistente con datos
+      // de una conexión muerta, así que se reinicia el flujo y se avisa.
+      _resetFlow();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(lostMessage), backgroundColor: Colors.redAccent, duration: const Duration(seconds: 4)),
+      );
     }
+    setState(() {});
   }
 
   @override
