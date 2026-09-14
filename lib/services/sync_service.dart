@@ -135,6 +135,11 @@ class SyncServiceImpl implements SyncService {
       for (var ganadero in ganaderos) {
         if (ganadero.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
+          // No se manda 'fecha_registro': la tabla 'ganaderos' en Supabase no
+          // tiene esa columna (usa created_at/updated_at con default propio).
+          // Al incluirla, Postgrest rechazaba el upsert completo con un error
+          // de columna inexistente, atrapado silenciosamente abajo -- por eso
+          // ningun ganadero llegaba nunca a la nube.
           final payload = {
             'id': ganadero.id,
             'cuenta_id': ganadero.clienteId,
@@ -144,9 +149,6 @@ class SyncServiceImpl implements SyncService {
             'rancho': ganadero.rancho,
             'telefono': ganadero.tel,
           };
-          if (ganadero.fechaRegistro.isNotEmpty) {
-            payload['fecha_registro'] = ganadero.fechaRegistro;
-          }
 
           await client.from('ganaderos').upsert(payload, onConflict: 'id');
 
