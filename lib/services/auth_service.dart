@@ -29,7 +29,35 @@ class AuthService extends ChangeNotifier {
   bool get isLoggedIn => _currentUser != null;
   bool get isAdmin => _currentUser?.isAdmin ?? false;
   bool get isOperador => _currentUser?.isOperador ?? false;
-  String get activeClienteId => _currentUser?.clienteId ?? DatabaseMigrator.defaultClienteId;
+  String get activeClienteId =>
+      _currentUser?.clienteId ?? DatabaseMigrator.defaultClienteId;
+
+  // Mensaje de una sola lectura: cuando crear/editar/eliminar un operador
+  // falla en la nube por una razón que NO es simplemente estar sin
+  // conexión (sesión sin autenticar, RLS, error de la RPC, etc.), la
+  // operación local se sigue completando (offline-first), pero antes eso
+  // pasaba en TOTAL silencio -- el admin veía "éxito" en pantalla aunque el
+  // operador nunca quedó respaldado en la nube (no podría iniciar sesión
+  // desde otro dispositivo hasta sincronizar, o seguiría activo en la nube
+  // pese a que el admin creyó haberlo eliminado).
+  String? _lastOperatorCloudWarning;
+  String? consumeLastOperatorCloudWarning() {
+    final msg = _lastOperatorCloudWarning;
+    _lastOperatorCloudWarning = null;
+    return msg;
+  }
+
+  bool _isLikelyNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('failed host lookup') ||
+        s.contains('network is unreachable') ||
+        s.contains('connection refused') ||
+        s.contains('connection reset') ||
+        s.contains('connection closed') ||
+        s.contains('timeoutexception') ||
+        s.contains('clientexception');
+  }
 
   static const String _prefUserIdKey = 'bioscan_auth_user_id';
   static const String _prefClienteIdKey = 'bioscan_auth_cliente_id';
@@ -61,7 +89,9 @@ class AuthService extends ChangeNotifier {
   /// Provisión segura del Administrador inicial sin credenciales hardcodeadas en vistas.
   Future<void> ensureDefaultAdmin() async {
     const defaultClienteId = DatabaseMigrator.defaultClienteId;
-    final adminUser = await _usuarioRepository.getAdminByCliente(defaultClienteId);
+    final adminUser = await _usuarioRepository.getAdminByCliente(
+      defaultClienteId,
+    );
 
     if (adminUser == null) {
       const initialUsername = 'admin';
@@ -83,7 +113,9 @@ class AuthService extends ChangeNotifier {
       );
 
       await _usuarioRepository.insertUsuario(newAdmin);
-      debugPrint('Administrador inicial provisionado con éxito (Username: $initialUsername).');
+      debugPrint(
+        'Administrador inicial provisionado con éxito (Username: $initialUsername).',
+      );
     }
   }
 
@@ -98,8 +130,10 @@ class AuthService extends ChangeNotifier {
     bool supabaseAuthSuccess = false;
     if (SupabaseConfig.isInitialized) {
       try {
-        String loginEmail = cleanUsername.contains('@') ? cleanUsername : '$cleanUsername@bioscan.app';
-        
+        String loginEmail = cleanUsername.contains('@')
+            ? cleanUsername
+            : '$cleanUsername@bioscan.app';
+
         // Antes de autenticar, buscar el correo real asociado a este usuario.
         // Se usa una RPC (no una lectura directa de la tabla 'usuarios')
         // porque en este punto todavía no hay sesión de Supabase Auth, así
@@ -107,17 +141,17 @@ class AuthService extends ChangeNotifier {
         // dan acceso de lectura a la tabla completa, solo a esta función,
         // que expone únicamente el correo de una cuenta activa.
         try {
-           final resolvedEmail = await SupabaseConfig.client.rpc(
-             'resolve_login_email',
-             params: {'p_identifier': cleanUsername},
-           );
+          final resolvedEmail = await SupabaseConfig.client.rpc(
+            'resolve_login_email',
+            params: {'p_identifier': cleanUsername},
+          );
 
-           if (resolvedEmail != null && resolvedEmail.toString().isNotEmpty) {
-             loginEmail = resolvedEmail.toString();
-             debugPrint('Correo real resuelto desde Supabase: $loginEmail');
-           }
+          if (resolvedEmail != null && resolvedEmail.toString().isNotEmpty) {
+            loginEmail = resolvedEmail.toString();
+            debugPrint('Correo real resuelto desde Supabase: $loginEmail');
+          }
         } catch (e) {
-           debugPrint('No se pudo resolver el correo previamente: $e');
+          debugPrint('No se pudo resolver el correo previamente: $e');
         }
 
         final response = await SupabaseConfig.client.auth.signInWithPassword(
@@ -125,7 +159,9 @@ class AuthService extends ChangeNotifier {
           password: password,
         );
         if (response.user != null) {
-          debugPrint('Autenticación en Supabase Auth exitosa para: $cleanUsername');
+          debugPrint(
+            'Autenticación en Supabase Auth exitosa para: $cleanUsername',
+          );
           supabaseAuthSuccess = true;
 
           // Sincronizar el perfil del usuario desde la tabla 'usuarios' en Supabase a SQLite
@@ -135,60 +171,88 @@ class AuthService extends ChangeNotifier {
             final usrData = await SupabaseConfig.client
                 .from('usuarios')
                 .select()
-                .or('id.eq.$userId,username.eq.$cleanUsername,correo.eq.$cleanUsername')
+                .or(
+                  'id.eq.$userId,username.eq.$cleanUsername,correo.eq.$cleanUsername',
+                )
                 .maybeSingle();
-                
+
             if (usrData != null) {
               final remoteUser = Usuario.fromMap(usrData);
-              
-              // Evitar error de llave foránea (FOREIGN KEY): 
+
+              // Evitar error de llave foránea (FOREIGN KEY):
               // Asegurar que la cuenta/cliente exista localmente antes de insertar al usuario
               final cuentaId = remoteUser.clienteId;
               if (cuentaId.isNotEmpty) {
                 final db = AppDatabase.instance.db;
-                final cuentas = await db.query('clientes', where: 'id = ?', whereArgs: [cuentaId]);
+                final cuentas = await db.query(
+                  'clientes',
+                  where: 'id = ?',
+                  whereArgs: [cuentaId],
+                );
                 if (cuentas.isEmpty) {
-                   final cuentaData = await SupabaseConfig.client.from('cuentas').select().eq('id', cuentaId).maybeSingle();
-                   if (cuentaData != null) {
-                      await db.insert('clientes', {
-                        'id': cuentaData['id']?.toString() ?? cuentaId,
-                        'nombre': cuentaData['nombre']?.toString() ?? 'Cuenta $cuentaId',
-                        'empresa': cuentaData['empresa']?.toString() ?? '',
-                        'telefono': cuentaData['telefono']?.toString() ?? '',
-                        'correo': cuentaData['correo']?.toString() ?? '',
-                        'fecha_registro': cuentaData['created_at']?.toString() ?? DateTime.now().toIso8601String(),
-                        'activo': cuentaData['activo'] == true ? 1 : 0,
-                      });
-                      debugPrint('Cuenta asociada sincronizada exitosamente para evitar error de llave foránea.');
-                   }
+                  final cuentaData = await SupabaseConfig.client
+                      .from('cuentas')
+                      .select()
+                      .eq('id', cuentaId)
+                      .maybeSingle();
+                  if (cuentaData != null) {
+                    await db.insert('clientes', {
+                      'id': cuentaData['id']?.toString() ?? cuentaId,
+                      'nombre':
+                          cuentaData['nombre']?.toString() ??
+                          'Cuenta $cuentaId',
+                      'empresa': cuentaData['empresa']?.toString() ?? '',
+                      'telefono': cuentaData['telefono']?.toString() ?? '',
+                      'correo': cuentaData['correo']?.toString() ?? '',
+                      'fecha_registro':
+                          cuentaData['created_at']?.toString() ??
+                          DateTime.now().toIso8601String(),
+                      'activo': cuentaData['activo'] == true ? 1 : 0,
+                    });
+                    debugPrint(
+                      'Cuenta asociada sincronizada exitosamente para evitar error de llave foránea.',
+                    );
+                  }
                 }
               }
 
               // Buscar localmente usando el ID remoto para evitar duplicados si cambió el username
-              var localUser = await _usuarioRepository.getUsuarioById(remoteUser.id);
+              var localUser = await _usuarioRepository.getUsuarioById(
+                remoteUser.id,
+              );
               if (localUser == null) {
                 // Intentar buscar por username si no existe por ID
-                localUser = await _usuarioRepository.getUsuarioByUsername(cleanUsername);
+                localUser = await _usuarioRepository.getUsuarioByUsername(
+                  cleanUsername,
+                );
               }
-              
+
               if (localUser == null) {
                 await _usuarioRepository.insertUsuario(remoteUser);
-                debugPrint('Usuario descargado de Supabase y guardado localmente sin errores de DB.');
+                debugPrint(
+                  'Usuario descargado de Supabase y guardado localmente sin errores de DB.',
+                );
               } else {
                 // Actualizar info remota manteniendo hash y salt local si existe
                 final updatedUser = remoteUser.copyWith(
                   id: localUser.id, // Mantener ID local si difiere
-                  passwordHash: localUser.passwordHash.isNotEmpty ? localUser.passwordHash : remoteUser.passwordHash,
-                  salt: localUser.salt.isNotEmpty ? localUser.salt : remoteUser.salt,
+                  passwordHash: localUser.passwordHash.isNotEmpty
+                      ? localUser.passwordHash
+                      : remoteUser.passwordHash,
+                  salt: localUser.salt.isNotEmpty
+                      ? localUser.salt
+                      : remoteUser.salt,
                 );
                 await _usuarioRepository.updateUsuario(updatedUser);
               }
-              
+
               // Importante: Actualizar cleanUsername para que el resto de la función lo encuentre
               cleanUsername = remoteUser.username;
             }
           } catch (e) {
-            debugPrint('Aviso: No se pudo sincronizar el perfil de usuario desde Supabase: $e');
+            debugPrint(
+              'Aviso: No se pudo sincronizar el perfil de usuario desde Supabase: $e',
+            );
           }
         }
       } catch (e) {
@@ -203,10 +267,14 @@ class AuthService extends ChangeNotifier {
         // de abajo. Para ese caso sí dejamos pasar al fallback de SQLite.
         final errorString = e.toString().toLowerCase();
         if (errorString.contains('email not confirmed')) {
-          throw AuthException('Debes confirmar tu correo electrónico antes de iniciar sesión.');
+          throw AuthException(
+            'Debes confirmar tu correo electrónico antes de iniciar sesión.',
+          );
         } else if (e.runtimeType.toString() == 'AuthException') {
-           // Lanzamos el error exacto que nos da Supabase
-           throw AuthException('Error de nube: ${e.toString().replaceAll('AuthException: ', '')}');
+          // Lanzamos el error exacto que nos da Supabase
+          throw AuthException(
+            'Error de nube: ${e.toString().replaceAll('AuthException: ', '')}',
+          );
         }
         // Si es error de red, dejamos que pase al fallback de SQLite
       }
@@ -218,7 +286,9 @@ class AuthService extends ChangeNotifier {
       user = await _usuarioRepository.getUsuarioByUsername(cleanUsername);
     } catch (e) {
       debugPrint('Error al consultar usuario en login: $e');
-      throw AuthException('Ocurrió un error al verificar las credenciales. Intente nuevamente.');
+      throw AuthException(
+        'Ocurrió un error al verificar las credenciales. Intente nuevamente.',
+      );
     }
 
     if (user == null) {
@@ -245,7 +315,9 @@ class AuthService extends ChangeNotifier {
     }
 
     if (!user.activo) {
-      throw AuthException('El usuario ingresado se encuentra desactivado. Contacte a su administrador.');
+      throw AuthException(
+        'El usuario ingresado se encuentra desactivado. Contacte a su administrador.',
+      );
     }
 
     // Si el usuario no tiene password_hash o salt, migrar en el primer login
@@ -264,9 +336,15 @@ class AuthService extends ChangeNotifier {
         await _usuarioRepository.updateUsuario(user);
       } else if (!supabaseAuthSuccess) {
         // Solo validar localmente si la autenticación de Supabase falló o no estaba disponible
-        final isValidPassword = PasswordHasher.verifyPassword(password.trim(), user.salt, user.passwordHash);
+        final isValidPassword = PasswordHasher.verifyPassword(
+          password.trim(),
+          user.salt,
+          user.passwordHash,
+        );
         if (!isValidPassword) {
-          throw AuthException('Contraseña incorrecta para el usuario: "$cleanUsername".');
+          throw AuthException(
+            'Contraseña incorrecta para el usuario: "$cleanUsername".',
+          );
         }
       }
     }
@@ -312,21 +390,31 @@ class AuthService extends ChangeNotifier {
     String? correo,
   }) async {
     if (!isAdmin) {
-      throw AuthException('Acceso denegado. Solamente el Administrador puede crear usuarios.');
+      throw AuthException(
+        'Acceso denegado. Solamente el Administrador puede crear usuarios.',
+      );
     }
 
     final clienteId = activeClienteId;
 
     // Verificar si ya existe un operador registrado para la cuenta
-    final existingOperator = await _usuarioRepository.getOperatorByCliente(clienteId);
+    final existingOperator = await _usuarioRepository.getOperatorByCliente(
+      clienteId,
+    );
     if (existingOperator != null) {
-      throw OperatorLimitExceededException('Esta cuenta BioScan ya cuenta con 1 usuario Operador (${existingOperator.username}). No es posible crear operadores adicionales.');
+      throw OperatorLimitExceededException(
+        'Esta cuenta BioScan ya cuenta con 1 usuario Operador (${existingOperator.username}). No es posible crear operadores adicionales.',
+      );
     }
 
     final cleanUsername = username.trim().toLowerCase();
-    final existingUsername = await _usuarioRepository.getUsuarioByUsername(cleanUsername);
+    final existingUsername = await _usuarioRepository.getUsuarioByUsername(
+      cleanUsername,
+    );
     if (existingUsername != null) {
-      throw AuthException('El nombre de usuario "$cleanUsername" ya se encuentra registrado. Elija otro.');
+      throw AuthException(
+        'El nombre de usuario "$cleanUsername" ya se encuentra registrado. Elija otro.',
+      );
     }
 
     final salt = PasswordHasher.generateSalt();
@@ -334,32 +422,50 @@ class AuthService extends ChangeNotifier {
 
     String operatorId = UuidGenerator.generate();
     bool isSynced = false;
-    final finalCorreo = (correo ?? '').trim().isEmpty ? '$cleanUsername@bioscan.app' : correo!.trim();
+    final finalCorreo = (correo ?? '').trim().isEmpty
+        ? '$cleanUsername@bioscan.app'
+        : correo!.trim();
 
     // Intentar crear en Supabase Nube vía RPC segura
     if (SupabaseConfig.isInitialized) {
       try {
-        final response = await SupabaseConfig.client.rpc('create_operator_user', params: {
-          'p_username': cleanUsername,
-          'p_nombre': nombre.trim(),
-          'p_password': password,
-          'p_correo': finalCorreo,
-        });
-        
+        final response = await SupabaseConfig.client.rpc(
+          'create_operator_user',
+          params: {
+            'p_username': cleanUsername,
+            'p_nombre': nombre.trim(),
+            'p_password': password,
+            'p_correo': finalCorreo,
+          },
+        );
+
         if (response != null && response is Map && response['id'] != null) {
-           operatorId = response['id'].toString();
-           isSynced = true;
-           debugPrint('Operador registrado exitosamente en Supabase Nube vía RPC con ID: $operatorId');
+          operatorId = response['id'].toString();
+          isSynced = true;
+          debugPrint(
+            'Operador registrado exitosamente en Supabase Nube vía RPC con ID: $operatorId',
+          );
         }
       } catch (e) {
         debugPrint('Aviso: Creación de operador en Supabase RPC falló: $e');
         final errorString = e.toString().toLowerCase();
         if (errorString.contains('ya se encuentra registrado')) {
-           throw AuthException('El nombre de usuario "$cleanUsername" ya se encuentra registrado en la nube. Elija otro.');
+          throw AuthException(
+            'El nombre de usuario "$cleanUsername" ya se encuentra registrado en la nube. Elija otro.',
+          );
         } else if (e.runtimeType.toString() == 'PostgrestException') {
-           throw AuthException('Error en la nube al crear operador: ${e.toString()}');
+          throw AuthException(
+            'Error en la nube al crear operador: ${e.toString()}',
+          );
         }
-        // Fallback: si es error de red (no PostgrestException), continuamos para guardar offline
+        // Fallback: si es error de red, continuamos para guardar offline.
+        // Si NO es de red (sesión sin autenticar, RLS, etc.), igual se
+        // completa el guardado local por resiliencia, pero se deja un
+        // aviso para que la UI no muestre "éxito" sin más.
+        if (!_isLikelyNetworkError(e)) {
+          _lastOperatorCloudWarning =
+              'El operador se creó localmente, pero no se pudo respaldar en la nube ($e). No podrá iniciar sesión desde otro dispositivo hasta que se sincronice.';
+        }
       }
     }
 
@@ -390,7 +496,9 @@ class AuthService extends ChangeNotifier {
     bool? activo,
   }) async {
     if (!isAdmin) {
-      throw AuthException('Acceso denegado. Solamente el Administrador puede gestionar usuarios.');
+      throw AuthException(
+        'Acceso denegado. Solamente el Administrador puede gestionar usuarios.',
+      );
     }
 
     final operatorUser = await _usuarioRepository.getUsuarioById(operatorId);
@@ -402,9 +510,13 @@ class AuthService extends ChangeNotifier {
     if (username != null && username.trim().isNotEmpty) {
       final cleanUsername = username.trim().toLowerCase();
       if (cleanUsername != operatorUser.username.toLowerCase()) {
-        final existingUser = await _usuarioRepository.getUsuarioByUsername(cleanUsername);
+        final existingUser = await _usuarioRepository.getUsuarioByUsername(
+          cleanUsername,
+        );
         if (existingUser != null && existingUser.id != operatorId) {
-          throw AuthException('El nombre de usuario "$cleanUsername" ya se encuentra en uso por otro usuario.');
+          throw AuthException(
+            'El nombre de usuario "$cleanUsername" ya se encuentra en uso por otro usuario.',
+          );
         }
         newUsername = cleanUsername;
       }
@@ -418,19 +530,30 @@ class AuthService extends ChangeNotifier {
     if (newPassword != null && newPassword.trim().isNotEmpty) {
       salt = PasswordHasher.generateSalt();
       passwordHash = PasswordHasher.hashPassword(newPassword.trim(), salt);
-      
+
       if (SupabaseConfig.isInitialized) {
         try {
-          await SupabaseConfig.client.rpc('update_operator_password', params: {
-            'p_operator_id': operatorId,
-            'p_new_password': newPassword.trim(),
-          });
-          debugPrint('Contraseña del operador actualizada en Supabase vía RPC.');
+          await SupabaseConfig.client.rpc(
+            'update_operator_password',
+            params: {
+              'p_operator_id': operatorId,
+              'p_new_password': newPassword.trim(),
+            },
+          );
+          debugPrint(
+            'Contraseña del operador actualizada en Supabase vía RPC.',
+          );
         } catch (e) {
-          debugPrint('Aviso: No se pudo actualizar contraseña del operador en la nube: $e');
+          debugPrint(
+            'Aviso: No se pudo actualizar contraseña del operador en la nube: $e',
+          );
           // Al ser offline-first, permitimos que el cambio proceda a nivel local.
           // Se marca como desincronizado para el futuro.
           isSynced = false;
+          if (!_isLikelyNetworkError(e)) {
+            _lastOperatorCloudWarning =
+                'La contraseña se actualizó localmente, pero no se pudo respaldar en la nube ($e). El operador podría seguir usando su contraseña anterior desde otro dispositivo hasta que se sincronice.';
+          }
         }
       }
     }
@@ -438,12 +561,14 @@ class AuthService extends ChangeNotifier {
     // Si actualizamos datos que se deben sincronizar, podríamos marcar isSynced = false
     // Pero asumiendo que el update base sincroniza o es llamado por SyncService:
     if (username != null || nombre != null || activo != null) {
-       isSynced = false;
+      isSynced = false;
     }
 
     final updated = operatorUser.copyWith(
       username: newUsername,
-      nombre: nombre?.trim().isNotEmpty == true ? nombre!.trim() : operatorUser.nombre,
+      nombre: nombre?.trim().isNotEmpty == true
+          ? nombre!.trim()
+          : operatorUser.nombre,
       passwordHash: passwordHash,
       salt: salt,
       activo: activo ?? operatorUser.activo,
@@ -456,18 +581,30 @@ class AuthService extends ChangeNotifier {
   /// Elimina físicamente a un operador (solo para Administrador).
   Future<void> deleteOperator(String operatorId) async {
     if (!isAdmin) {
-      throw AuthException('Acceso denegado. Solamente el Administrador puede eliminar usuarios.');
+      throw AuthException(
+        'Acceso denegado. Solamente el Administrador puede eliminar usuarios.',
+      );
     }
 
     if (SupabaseConfig.isInitialized) {
       try {
-        await SupabaseConfig.client.rpc('delete_operator_user', params: {
-          'p_operator_id': operatorId,
-        });
+        await SupabaseConfig.client.rpc(
+          'delete_operator_user',
+          params: {'p_operator_id': operatorId},
+        );
         debugPrint('Operador eliminado en Supabase Nube vía RPC.');
       } catch (e) {
         debugPrint('Aviso: Fallo al eliminar operador en nube: $e');
-        // Si no está en línea o falla, procedemos a borrarlo localmente
+        // Si no está en línea o falla, procedemos a borrarlo localmente.
+        // Esto es más delicado que un simple fallo de sincronización: si la
+        // eliminación en la nube falló por algo distinto a estar offline,
+        // el usuario de Supabase Auth del operador sigue activo -- puede
+        // seguir iniciando sesión desde otro dispositivo aunque el admin
+        // crea que ya le quitó el acceso.
+        if (!_isLikelyNetworkError(e)) {
+          _lastOperatorCloudWarning =
+              'El operador se eliminó localmente, pero no se pudo revocar su acceso en la nube ($e). Podría seguir iniciando sesión desde otro dispositivo.';
+        }
       }
     }
 
@@ -475,13 +612,22 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Permite al usuario logueado cambiar su propia contraseña.
-  Future<void> changeOwnPassword(String currentPassword, String newPassword) async {
+  Future<void> changeOwnPassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
     if (_currentUser == null) throw AuthException('No hay una sesión activa.');
     if (newPassword.trim().length < 4) {
-      throw AuthException('La nueva contraseña debe contener al menos 4 caracteres.');
+      throw AuthException(
+        'La nueva contraseña debe contener al menos 4 caracteres.',
+      );
     }
 
-    final isValid = PasswordHasher.verifyPassword(currentPassword, _currentUser!.salt, _currentUser!.passwordHash);
+    final isValid = PasswordHasher.verifyPassword(
+      currentPassword,
+      _currentUser!.salt,
+      _currentUser!.passwordHash,
+    );
     if (!isValid) {
       throw AuthException('La contraseña actual es incorrecta.');
     }
@@ -495,7 +641,9 @@ class AuthService extends ChangeNotifier {
         debugPrint('Contraseña actualizada exitosamente en Supabase Auth.');
       } catch (e) {
         debugPrint('Error al actualizar contraseña en la nube: $e');
-        throw AuthException('No se pudo actualizar la contraseña en la nube. Asegúrate de tener conexión a internet.');
+        throw AuthException(
+          'No se pudo actualizar la contraseña en la nube. Asegúrate de tener conexión a internet.',
+        );
       }
     }
 
@@ -514,7 +662,10 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Permite al Administrador cambiar sus propios datos (nombre, correo).
-  Future<void> updateOwnProfile({required String nombre, required String correo}) async {
+  Future<void> updateOwnProfile({
+    required String nombre,
+    required String correo,
+  }) async {
     if (_currentUser == null) throw AuthException('No hay una sesión activa.');
 
     final updated = _currentUser!.copyWith(

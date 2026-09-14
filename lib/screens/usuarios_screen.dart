@@ -41,6 +41,24 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     super.dispose();
   }
 
+  /// Muestra el aviso (si lo hay) cuando crear/editar/eliminar un operador
+  /// se completó localmente pero falló al respaldarse en la nube por una
+  /// razón distinta a estar sin conexión -- sin esto, la pantalla solo
+  /// mostraba el mensaje de "éxito" y el admin nunca se enteraba.
+  void _maybeShowOperatorCloudWarning() {
+    final warning = ServiceLocator.authService
+        .consumeLastOperatorCloudWarning();
+    if (warning != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(warning),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
   Future<void> _loadUsersData() async {
     setState(() {
       _isLoading = true;
@@ -315,6 +333,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
       confirmPasswordCtrl.dispose();
     });
 
+    _maybeShowOperatorCloudWarning();
     await _loadUsersData();
   }
 
@@ -543,6 +562,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
       );
     }
 
+    _maybeShowOperatorCloudWarning();
     await _loadUsersData();
   }
 
@@ -615,6 +635,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
             const SnackBar(content: Text('Operador eliminado exitosamente.')),
           );
         }
+        _maybeShowOperatorCloudWarning();
         await _loadUsersData();
       } catch (e) {
         if (mounted) {
