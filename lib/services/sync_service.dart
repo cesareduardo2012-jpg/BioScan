@@ -110,7 +110,7 @@ class SyncServiceImpl implements SyncService {
         if (usr.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         if (usr.sincronizado) continue;
         try {
-          await client.from('usuarios').upsert({
+          final usrPayload = <String, dynamic>{
             'id': usr.id,
             'cuenta_id': usr.clienteId,
             'username': usr.username,
@@ -118,7 +118,11 @@ class SyncServiceImpl implements SyncService {
             'correo': usr.correo,
             'rol': usr.rol,
             'activo': usr.activo,
-          }, onConflict: 'id');
+          };
+          if (usr.ultimoAcceso != null && usr.ultimoAcceso!.isNotEmpty) {
+            usrPayload['ultimo_acceso'] = usr.ultimoAcceso;
+          }
+          await client.from('usuarios').upsert(usrPayload, onConflict: 'id');
 
           if (!usr.sincronizado) {
             final updated = usr.copyWith(sincronizado: true);
@@ -148,6 +152,7 @@ class SyncServiceImpl implements SyncService {
             'apellido_materno': ganadero.apellidoMaterno,
             'rancho': ganadero.rancho,
             'telefono': ganadero.tel,
+            'correo': ganadero.correo,
           };
 
           await client.from('ganaderos').upsert(payload, onConflict: 'id');

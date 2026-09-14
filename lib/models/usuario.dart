@@ -28,7 +28,13 @@ class Usuario {
   })  : activo = activo ?? true,
         sincronizado = sincronizado ?? false;
 
-  bool get isAdmin => rol.toUpperCase() == 'ADMINISTRADOR' || rol.toLowerCase() == 'admin';
+  // El backend (RPCs create_operator_user/delete_operator_user/
+  // update_operator_password) trata SUPERADMIN y ADMIN_CUENTA como
+  // administradores válidos además de ADMINISTRADOR -- sin reconocerlos
+  // aquí también, un usuario con esos roles quedaba bloqueado del lado de
+  // Flutter de funciones que la nube sí le permitía.
+  bool get isAdmin =>
+      const {'ADMINISTRADOR', 'ADMIN_CUENTA', 'SUPERADMIN', 'ADMIN'}.contains(rol.toUpperCase());
   bool get isOperador => rol.toUpperCase() == 'OPERADOR' || rol.toLowerCase() == 'tecnico' || rol.toLowerCase() == 'operator';
 
   Usuario copyWith({
