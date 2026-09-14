@@ -78,6 +78,8 @@ class _HistorialMedicionesScreenState extends State<HistorialMedicionesScreen> {
       pdfExiste = await file.exists();
     }
 
+    var medicionParaAbrir = medicion;
+
     if (!pdfExiste) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -101,8 +103,18 @@ class _HistorialMedicionesScreenState extends State<HistorialMedicionesScreen> {
         // Actualizar la ruta en la base de datos local
         final updatedMedicion = medicion.copyWith(pdfPath: newFile.path);
         await ServiceLocator.medicionRepository.updateMedicion(updatedMedicion);
+        medicionParaAbrir = updatedMedicion;
       } catch (e) {
         debugPrint('Error al regenerar y guardar PDF: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No se pudo generar el PDF localmente. Intenta de nuevo más tarde.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
     }
 
@@ -112,7 +124,7 @@ class _HistorialMedicionesScreenState extends State<HistorialMedicionesScreen> {
       context,
       MaterialPageRoute(
         builder: (ctx) => ReportePdfScreen(
-          medicion: medicion,
+          medicion: medicionParaAbrir,
           ganadero: ganadero,
           cliente: cliente,
           usuario: usuario,

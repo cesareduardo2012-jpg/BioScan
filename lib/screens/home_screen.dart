@@ -867,6 +867,21 @@ class _HomeScreenState extends State<HomeScreen> {
                           debugPrint('Error guardando archivo PDF local: $e');
                         }
 
+                        // Si el PDF no se pudo guardar, la medición se sigue
+                        // registrando (no se pierde el dato del sensor), pero
+                        // antes esto pasaba en total silencio -- el usuario
+                        // nunca se enteraba de que el certificado permanente
+                        // nunca se escribió en el teléfono.
+                        if (savedPdfFile == null && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('La medición se guardó, pero no se pudo generar el PDF localmente. Puedes reintentarlo desde el Historial.'),
+                              backgroundColor: Colors.orange,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                        }
+
                         final medicionFinal = medicionPrevia.copyWith(
                           pdfPath: savedPdfFile?.path,
                         );

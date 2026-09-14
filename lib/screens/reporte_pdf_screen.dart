@@ -71,22 +71,20 @@ class _ReportePdfScreenState extends State<ReportePdfScreen> {
 
       final filename = _getSanitizedFilename();
 
-      // 2. Localizar archivo existente o crear archivo temporal seguro para compartir
+      // 2. Escribir los bytes recién obtenidos/generados (paso 1) al archivo
+      // que se va a compartir. Antes, si ya existía un archivo en
+      // widget.medicion.pdfPath, se reutilizaba tal cual sin verificar que
+      // coincidiera con pdfBytes -- después de tocar "Actualizar"
+      // (forceRegenerate) se podía terminar compartiendo la versión vieja
+      // en disco en vez de la recién generada.
       File fileToShare;
       if (widget.medicion.pdfPath != null && widget.medicion.pdfPath!.isNotEmpty) {
-        final existingFile = File(widget.medicion.pdfPath!);
-        if (await existingFile.exists()) {
-          fileToShare = existingFile;
-        } else {
-          final tempDir = await getTemporaryDirectory();
-          fileToShare = File(p.join(tempDir.path, filename));
-          await fileToShare.writeAsBytes(pdfBytes, flush: true);
-        }
+        fileToShare = File(widget.medicion.pdfPath!);
       } else {
         final tempDir = await getTemporaryDirectory();
         fileToShare = File(p.join(tempDir.path, filename));
-        await fileToShare.writeAsBytes(pdfBytes, flush: true);
       }
+      await fileToShare.writeAsBytes(pdfBytes, flush: true);
 
       // 3. Obtener coordenadas de anclaje (vital para iPad y tablets para no colapsar la app)
       Rect? originRect;
