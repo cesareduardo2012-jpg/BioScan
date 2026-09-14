@@ -392,6 +392,32 @@ class PdfReportService {
 
               pw.SizedBox(height: 8),
 
+              // Aviso de datos simulados: una lectura del Modo Simulación/Demo
+              // usa el mismo formato de texto que una lectura real del ESP32,
+              // así que sin esta marca explícita el certificado sería
+              // indistinguible de uno con datos de hardware genuino.
+              if (medicion.isSimulado) ...[
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.amber100,
+                    borderRadius: pw.BorderRadius.circular(5),
+                    border: pw.Border.all(color: PdfColors.amber700, width: 1.5),
+                  ),
+                  child: pw.Text(
+                    'DATOS SIMULADOS (MODO DEMO) — NO VÁLIDO PARA USO OFICIAL',
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      color: PdfColors.brown800,
+                      fontSize: 10,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+                pw.SizedBox(height: 8),
+              ],
+
               // ==========================================
               // 3. SEMÁFORO / DICTAMEN GLOBAL PARA EL GANADERO
               // ==========================================

@@ -172,5 +172,17 @@ class DatabaseMigrator {
         await db.execute('ALTER TABLE ${UsuariosTable.tableName} ADD COLUMN ${UsuariosTable.columnSincronizado} INTEGER NOT NULL DEFAULT 0');
       }
     }
+
+    if (oldVersion < 9) {
+      // Migración v9: Agregar columna es_simulado a mediciones -- para poder
+      // distinguir una lectura tomada con el Modo Simulación/Demo de una
+      // lectura real capturada con el sensor ESP32 físico, ya que ambas
+      // comparten exactamente el mismo formato de texto crudo.
+      final medicionesInfo = await db.rawQuery("PRAGMA table_info(${MedicionesTable.tableName})");
+      final hasEsSimulado = medicionesInfo.any((c) => c['name'] == MedicionesTable.columnEsSimulado);
+      if (!hasEsSimulado) {
+        await db.execute('ALTER TABLE ${MedicionesTable.tableName} ADD COLUMN ${MedicionesTable.columnEsSimulado} INTEGER NOT NULL DEFAULT 0');
+      }
+    }
   }
 }

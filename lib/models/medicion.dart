@@ -12,6 +12,7 @@ class Medicion {
   final bool sincronizado;
   final String? fechaSincronizacion;
   final String? pdfPath;
+  final bool isSimulado;
 
   const Medicion({
     required this.id,
@@ -27,10 +28,12 @@ class Medicion {
     bool? sincronizado,
     this.fechaSincronizacion,
     this.pdfPath,
+    bool? isSimulado,
   })  : clienteId = clienteId ?? '00000000-0000-0000-0000-000000000001',
         densidad = agua,
         observaciones = observaciones ?? '',
-        sincronizado = sincronizado ?? false;
+        sincronizado = sincronizado ?? false,
+        isSimulado = isSimulado ?? false;
 
   // Getter for backward compatibility with existing UI code
   String get agua => densidad;
@@ -50,6 +53,7 @@ class Medicion {
     bool? sincronizado,
     String? fechaSincronizacion,
     String? pdfPath,
+    bool? isSimulado,
   }) {
     return Medicion(
       id: id ?? this.id,
@@ -65,6 +69,7 @@ class Medicion {
       sincronizado: sincronizado ?? this.sincronizado,
       fechaSincronizacion: fechaSincronizacion ?? this.fechaSincronizacion,
       pdfPath: pdfPath ?? this.pdfPath,
+      isSimulado: isSimulado ?? this.isSimulado,
     );
   }
 
@@ -83,6 +88,7 @@ class Medicion {
       sincronizado: map['sincronizado'] == 1 || map['sincronizado'] == true,
       fechaSincronizacion: (map['fecha_sincronizacion'] ?? map['fechaSincronizacion'])?.toString(),
       pdfPath: (map['pdf_path'] ?? map['pdfPath'])?.toString(),
+      isSimulado: map['es_simulado'] == 1 || map['es_simulado'] == true || map['isSimulado'] == 1 || map['isSimulado'] == true,
     );
   }
 
@@ -100,5 +106,6 @@ class Medicion {
         'sincronizado': sincronizado ? 1 : 0,
         'fecha_sincronizacion': fechaSincronizacion,
         'pdf_path': pdfPath,
+        'es_simulado': isSimulado ? 1 : 0,
       };
 }

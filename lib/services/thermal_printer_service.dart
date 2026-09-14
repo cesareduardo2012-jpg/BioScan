@@ -337,13 +337,32 @@ class ThermalPrinterService {
       ),
     );
     bytes += generator.text(
-      'Confianza en cada gots',
+      'Confianza en cada gota',
       styles: const PosStyles(align: PosAlign.center, bold: true),
     );
     bytes += generator.text(
       '--------------------------------',
       styles: const PosStyles(align: PosAlign.center),
     );
+
+    // Aviso de datos simulados: el Modo Simulación/Demo genera texto con el
+    // mismo formato que una lectura real del ESP32, así que sin esta marca
+    // el ticket impreso sería indistinguible de uno con datos de hardware
+    // genuino.
+    if (medicion.isSimulado) {
+      bytes += generator.text(
+        '** DATOS SIMULADOS (DEMO) **',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      );
+      bytes += generator.text(
+        'NO VALIDO PARA USO OFICIAL',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      );
+      bytes += generator.text(
+        '--------------------------------',
+        styles: const PosStyles(align: PosAlign.center),
+      );
+    }
 
     // 2. DATOS DE IDENTIFICACIÓN
     bytes += generator.text('Folio:   #$folioShort', styles: const PosStyles(bold: true));

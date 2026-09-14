@@ -845,6 +845,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           fecha: DateTime.now().toUtc().toIso8601String(),
                           observaciones: btManager.latestRawLine,
                           sincronizado: false,
+                          // Distingue una lectura tomada en Modo Simulación/Demo de una
+                          // real capturada con el sensor físico -- ambas comparten el
+                          // mismo formato de texto y son indistinguibles a simple vista
+                          // una vez guardadas (ver certificado/ticket, que ahora marcan
+                          // esto explícitamente cuando es true).
+                          isSimulado: btManager.isSimulationMode,
                         );
 
                         // Generar y persistir físicamente el PDF en el almacenamiento local del dispositivo
