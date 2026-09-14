@@ -55,6 +55,18 @@ class _ConfigurarImpresoraScreenState extends State<ConfigurarImpresoraScreen> {
     }
   }
 
+  /// Heurística por nombre: getPairedPrinters() en realidad devuelve TODOS
+  /// los dispositivos Bluetooth emparejados del teléfono (audífonos,
+  /// bocinas, otro celular), no solo impresoras -- no hay forma confiable
+  /// de saber por API si es una impresora real antes de intentar imprimir.
+  /// Esto solo avisa visualmente en la lista, no bloquea la selección (un
+  /// nombre inusual no significa que no sea una impresora real).
+  bool _looksLikePrinter(String name) {
+    final n = name.toLowerCase();
+    const keywords = ['print', 'impres', 'pos', 'thermal', 'térmica', 'termica', 'rpp', 'mtp', 'bt-', 'zj', 'gp-', 'hm-'];
+    return keywords.any((k) => n.contains(k));
+  }
+
   Future<void> _seleccionarImpresora(BluetoothInfo device) async {
     if (_isConnecting) return;
 
@@ -432,6 +444,7 @@ class _ConfigurarImpresoraScreenState extends State<ConfigurarImpresoraScreen> {
                       itemBuilder: (context, index) {
                         final device = _availableDevices[index];
                         final isSelected = _configuredPrinter?['mac'] == device.macAdress;
+                        final looksLikePrinter = _looksLikePrinter(device.name);
 
                         return Card(
                           elevation: 1,
@@ -460,7 +473,21 @@ class _ConfigurarImpresoraScreenState extends State<ConfigurarImpresoraScreen> {
                                 color: isSelected ? primaryStrong : Colors.black87,
                               ),
                             ),
-                            subtitle: Text('MAC: ${device.macAdress}'),
+                            subtitle: looksLikePrinter
+                                ? Text('MAC: ${device.macAdress}')
+                                : Row(
+                                    children: [
+                                      Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          'MAC: ${device.macAdress} • Puede que no sea una impresora',
+                                          style: TextStyle(color: Colors.orange.shade800, fontSize: 12),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                             trailing: isSelected
                                 ? const Icon(Icons.check_circle, color: secondaryMild)
                                 : OutlinedButton(

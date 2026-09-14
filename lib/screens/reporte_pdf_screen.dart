@@ -236,11 +236,15 @@ class _ReportePdfScreenState extends State<ReportePdfScreen> {
       );
 
       if (mounted) {
+        // "Enviado", no "impreso": el envío por Bluetooth pudo completarse
+        // sin que el dispositivo emparejado sea realmente una impresora
+        // (getPairedPrinters no filtra por tipo), así que un envío exitoso
+        // no garantiza que algo haya salido físicamente impreso.
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ticket impreso con éxito en impresora térmica'),
+            content: Text('Ticket enviado a la impresora térmica. Verifica que haya impreso correctamente.'),
             backgroundColor: Color(0xFF008C83),
-            duration: Duration(seconds: 2),
+            duration: Duration(seconds: 3),
           ),
         );
       }

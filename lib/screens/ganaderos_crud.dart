@@ -102,10 +102,18 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                   ),
                   TextFormField(
                     controller: telController,
+                    keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(labelText: 'Teléfono'),
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'Por favor ingresa el teléfono';
+                      }
+                      // Antes solo se exigía "no vacío": cualquier texto (una
+                      // letra, un símbolo) pasaba y se guardaba tal cual --
+                      // ese dato termina impreso en el ticket/PDF entregado.
+                      final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+                      if (digits.length < 7 || digits.length > 15) {
+                        return 'Ingresa un teléfono válido (solo números, 7 a 15 dígitos)';
                       }
                       return null;
                     },
