@@ -527,7 +527,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (mounted) {
                           setState(() {
                             _isDensityStabilizing = false;
-                            _densidadCapturada = densidad;
+                            // Leer el valor EN VIVO al terminar la espera, no
+                            // el que tenía el sensor cuando se tocó el botón
+                            // (capturado por el closure vía el parámetro
+                            // "densidad") -- si no, "Estabilizando..." era
+                            // solo un spinner cosmético que igual guardaba
+                            // la lectura de antes de esperar.
+                            _densidadCapturada = BluetoothManager.instance.densidadActual;
                           });
                           _showSensorsPlacementDialog();
                         }
@@ -597,15 +603,20 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.green, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Densidad guardada: $_densidadCapturada',
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13),
-                      ),
-                    ],
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Densidad guardada: $_densidadCapturada',
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   TextButton(
                     style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
@@ -761,9 +772,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       const Icon(Icons.person, size: 16, color: Color(0xFF1A237E)),
                       const SizedBox(width: 6),
-                      Text(
-                        selectedGanadero?.nombreCompleto ?? 'Ganadero no asignado',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      Expanded(
+                        child: Text(
+                          selectedGanadero?.nombreCompleto ?? 'Ganadero no asignado',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
                       ),
                     ],
                   ),
