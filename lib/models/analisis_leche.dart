@@ -44,16 +44,19 @@ class AnalisisLeche {
   });
 
   factory AnalisisLeche.evaluate(Medicion medicion) {
-    // 1. Extraer número de pH
-    final phMatch = RegExp(r'([0-9]+(?:\.[0-9]+)?)').firstMatch(medicion.ph);
+    // 1. Extraer número de pH (el ESP32 puede mandar valores negativos ante
+    //    fallas de sensor o lecturas fuera de rango, por lo que el signo "-"
+    //    debe ser parte del valor capturado -- igual que en bluetooth_manager.dart)
+    final phMatch = RegExp(r'(-?[0-9]+(?:\.[0-9]+)?)').firstMatch(medicion.ph);
     final phVal = phMatch != null ? double.tryParse(phMatch.group(1)!) : null;
 
-    // 2. Extraer densidad / agua
+    // 2. Extraer densidad / agua (también puede venir negativa)
     final rawAgua = medicion.agua.trim();
-    final densMatch = RegExp(r'([0-9]+(?:\.[0-9]+)?)').firstMatch(rawAgua);
+    final densMatch = RegExp(r'(-?[0-9]+(?:\.[0-9]+)?)').firstMatch(rawAgua);
     double? parsedNum = densMatch != null ? double.tryParse(densMatch.group(1)!) : null;
 
     bool waterDetected = false;
+    bool densImplausible = false;
     double? waterPct;
     double? densVal;
 
@@ -72,8 +75,15 @@ class AnalisisLeche {
       }
 
       densVal = parsedNum;
-      // Criterio NOM-155-SCFI-2012 / COFOCALEC: Densidad normal mínima 1.028 g/mL
-      if (densVal < 1.0280 && densVal > 0.90) {
+      // Criterio NOM-155-SCFI-2012 / COFOCALEC: Densidad normal mínima 1.028 g/mL.
+      // Por debajo de 0.90 g/mL el valor ya no es físicamente posible para leche
+      // (incluye lecturas negativas o cero por falla de sensor/dilución extrema):
+      // se marca como anomalía crítica en vez de aplicarle la fórmula de % de
+      // agua, que solo es válida dentro de un rango realista.
+      if (densVal < 0.90) {
+        densImplausible = true;
+        waterPct = null;
+      } else if (densVal < 1.0280) {
         waterDetected = true;
         // Estimación estándar de % de agua agregada:
         // % Agua = ((1.030 - Densidad) / 1.030) * factor de sólidos (~280)
@@ -85,8 +95,8 @@ class AnalisisLeche {
       }
     }
 
-    // 3. Extraer temperatura
-    final tempMatch = RegExp(r'([0-9]+(?:\.[0-9]+)?)').firstMatch(medicion.temperatura);
+    // 3. Extraer temperatura (también puede venir negativa)
+    final tempMatch = RegExp(r'(-?[0-9]+(?:\.[0-9]+)?)').firstMatch(medicion.temperatura);
     final tempVal = tempMatch != null ? double.tryParse(tempMatch.group(1)!) : null;
 
     // Diagnóstico de pH (NOM-155-SCFI-2012 / FAO: Rango 6.60 a 6.80, tolerancia 6.50-6.80)
@@ -95,18 +105,25 @@ class AnalisisLeche {
     final isPhOk = phVal != null && phVal >= 6.50 && phVal <= 6.80;
 
     // Diagnóstico de Densidad (NOM-155-SCFI-2012: 1.028 a 1.034 g/mL)
-    final isDensOk = densVal != null && densVal >= 1.028 && densVal <= 1.034 && !waterDetected;
+    final isDensOk = densVal != null && densVal >= 1.028 && densVal <= 1.034 && !waterDetected && !densImplausible;
     final isDensAbnormalHigh = densVal != null && densVal > 1.034;
 
-    // Dictamen Global
-    final hasDanger = waterDetected;
+    // Dictamen Global: hasDanger/hasWarning/isApproved son mutuamente
+    // excluyentes y exhaustivos para cualquier lectura numérica válida (pH
+    // siempre cae en ácido/normal/alcalino, densidad siempre cae en
+    // implausible/agua/normal/alta), para que el título del certificado, el
+    // color y el badge nunca se contradigan entre sí.
+    final hasDanger = waterDetected || densImplausible;
     final hasWarning = !hasDanger && (isAcid || isAlk || isDensAbnormalHigh);
-    final isApproved = !hasDanger && !hasWarning && (isPhOk || phVal == null) && (isDensOk || densVal == null);
+    final isApproved = !hasDanger && !hasWarning;
 
     String title;
     String subtitle;
 
-    if (hasDanger) {
+    if (densImplausible) {
+      title = 'ALERTA CRÍTICA: LECTURA DE DENSIDAD NO VÁLIDA';
+      subtitle = 'La densidad reportada (${densVal!.toStringAsFixed(4)} g/mL) está fuera de cualquier rango físicamente posible para leche. Verifique el sensor y repita la medición antes de emitir un dictamen; no se aplicó el cálculo de % de agua por estar fuera de su rango de validez.';
+    } else if (hasDanger) {
       title = 'ALERTA CRÍTICA: AGUA ADICIONADA DETECTADA';
       subtitle = 'Muestra NO CONFORME según NOM-155-SCFI-2012. Densidad por debajo de 1.028 g/mL con dilución estimada de ${waterPct != null ? waterPct.toStringAsFixed(1) : ''}%. La leche no cumple estándares para acopio por disminución severa de sólidos no grasos.';
     } else if (hasWarning) {
@@ -130,7 +147,7 @@ class AnalisisLeche {
       rawPh: medicion.ph,
       rawDensidad: medicion.agua,
       rawTemp: medicion.temperatura,
-      hasWaterAdulteration: waterDetected,
+      hasWaterAdulteration: hasDanger,
       estimatedWaterPct: waterPct,
       isAcidic: isAcid,
       isAlkaline: isAlk,
