@@ -327,14 +327,15 @@ class AuthService extends ChangeNotifier {
       user = user.copyWith(passwordHash: newHash, salt: newSalt);
       await _usuarioRepository.updateUsuario(user);
     } else {
-      if (cleanUsername == 'admin' && password.trim() == 'admin123') {
-        // Forzar bypass de password si usamos el backdoor de admin
-        // y restablecer el hash local a admin123 para que puedan cambiarla después
-        final newSalt = PasswordHasher.generateSalt();
-        final newHash = PasswordHasher.hashPassword('admin123', newSalt);
-        user = user.copyWith(passwordHash: newHash, salt: newSalt);
-        await _usuarioRepository.updateUsuario(user);
-      } else if (!supabaseAuthSuccess) {
+      // Antes, escribir literalmente "admin"/"admin123" iniciaba sesión
+      // SIEMPRE y además reescribía el hash guardado de vuelta a
+      // "admin123" -- incluso si el admin ya había cambiado su
+      // contraseña real vía changeOwnPassword(). Era un backdoor
+      // permanente e imposible de cerrar que además reseteaba en
+      // silencio una contraseña legítima. Ahora "admin"/"admin123" solo
+      // funciona si esa sigue siendo, de verdad, la contraseña actual
+      // guardada -- se verifica como cualquier otro usuario, abajo.
+      if (!supabaseAuthSuccess) {
         // Solo validar localmente si la autenticación de Supabase falló o no estaba disponible
         final isValidPassword = PasswordHasher.verifyPassword(
           password.trim(),
