@@ -100,16 +100,20 @@ class AuthService extends ChangeNotifier {
       try {
         String loginEmail = cleanUsername.contains('@') ? cleanUsername : '$cleanUsername@bioscan.app';
         
-        // Antes de autenticar, buscar el correo real asociado a este usuario en la base de datos pública
+        // Antes de autenticar, buscar el correo real asociado a este usuario.
+        // Se usa una RPC (no una lectura directa de la tabla 'usuarios')
+        // porque en este punto todavía no hay sesión de Supabase Auth, así
+        // que la petición corre como 'anon' -- las políticas RLS ya no le
+        // dan acceso de lectura a la tabla completa, solo a esta función,
+        // que expone únicamente el correo de una cuenta activa.
         try {
-           final preAuthUser = await SupabaseConfig.client
-              .from('usuarios')
-              .select('correo')
-              .or('username.eq.$cleanUsername,correo.eq.$cleanUsername')
-              .maybeSingle();
-              
-           if (preAuthUser != null && preAuthUser['correo'] != null && preAuthUser['correo'].toString().isNotEmpty) {
-             loginEmail = preAuthUser['correo'].toString();
+           final resolvedEmail = await SupabaseConfig.client.rpc(
+             'resolve_login_email',
+             params: {'p_identifier': cleanUsername},
+           );
+
+           if (resolvedEmail != null && resolvedEmail.toString().isNotEmpty) {
+             loginEmail = resolvedEmail.toString();
              debugPrint('Correo real resuelto desde Supabase: $loginEmail');
            }
         } catch (e) {
