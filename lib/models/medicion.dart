@@ -29,7 +29,8 @@ class Medicion {
     this.fechaSincronizacion,
     this.pdfPath,
     bool? isSimulado,
-  })  : densidad = agua,
+  })  : clienteId = clienteId ?? '',
+        densidad = agua,
         observaciones = observaciones ?? '',
         sincronizado = sincronizado ?? false,
         isSimulado = isSimulado ?? false;

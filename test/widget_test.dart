@@ -49,8 +49,25 @@ void main() {
       ),
     );
 
-    // Provision default initial admin for tests
-    await ServiceLocator.authService.ensureDefaultAdmin();
+    // Provision default initial admin for tests.
+    // Antes esto lo hacía AuthService.ensureDefaultAdmin(), que se eliminó del
+    // código de producción (ya no se siembra un admin local automáticamente),
+    // así que el fixture de pruebas ahora crea el suyo explícitamente.
+    final adminSalt = PasswordHasher.generateSalt();
+    await ServiceLocator.usuarioRepository.insertUsuario(
+      Usuario(
+        id: DatabaseMigrator.defaultAdminId,
+        clienteId: DatabaseMigrator.defaultClienteId,
+        username: 'admin',
+        nombre: 'Administrador BioScan',
+        correo: 'admin@bioscan.com',
+        passwordHash: PasswordHasher.hashPassword('admin123', adminSalt),
+        salt: adminSalt,
+        rol: 'ADMINISTRADOR',
+        fechaRegistro: DateTime.now().toIso8601String(),
+        activo: true,
+      ),
+    );
   });
 
   group('Pruebas de Criptografía y Hasher de Contraseñas', () {
