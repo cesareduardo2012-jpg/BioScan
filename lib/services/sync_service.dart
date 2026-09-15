@@ -10,6 +10,7 @@ import '../repositories/ganadero_repository.dart';
 import '../repositories/medicion_repository.dart';
 import '../repositories/usuario_repository.dart';
 import '../utils/supabase_config.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 abstract class SyncService {
   Future<void> syncPendingRecords();
@@ -26,6 +27,7 @@ class SyncServiceImpl implements SyncService {
   final MedicionRepository _medicionRepository;
 
   bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
 
   SyncServiceImpl(
     this._clienteRepository,
@@ -33,7 +35,19 @@ class SyncServiceImpl implements SyncService {
     this._dispositivoRepository,
     this._ganaderoRepository,
     this._medicionRepository,
-  );
+  ) {
+    _initConnectivityListener();
+  }
+
+  void _initConnectivityListener() {
+    Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      final result = results.firstOrNull ?? ConnectivityResult.none;
+      if (result != ConnectivityResult.none) {
+        debugPrint('[SYNC SERVICE] Conectividad restaurada. Intentando sincronización en background...');
+        syncPendingRecords();
+      }
+    });
+  }
 
   @override
   Future<void> syncAll() async {
@@ -46,7 +60,7 @@ class SyncServiceImpl implements SyncService {
     try {
       debugPrint('[SYNC SERVICE] Iniciando sincronización bidireccional completa con Supabase Nube...');
       // 1. Subir registros locales que no estén sincronizados primero
-      await syncPendingRecords();
+      await _syncPendingRecordsInternal();
       // 2. Descargar cambios remotos para poblar SQLite local
       await downloadChanges();
       debugPrint('[SYNC SERVICE] Sincronización bidireccional completada con éxito.');
@@ -60,8 +74,25 @@ class SyncServiceImpl implements SyncService {
 
   @override
   Future<void> syncPendingRecords() async {
-    if (!SupabaseConfig.isInitialized) return;
+    if (!SupabaseConfig.isInitialized) {
+      debugPrint('[SYNC SERVICE] Cliente de Supabase no inicializado.');
+      return;
+    }
 
+    if (_isSyncing) {
+      debugPrint('[SYNC SERVICE] Sincronización en curso. Omitiendo nueva solicitud para evitar duplicados.');
+      return;
+    }
+
+    _isSyncing = true;
+    try {
+      await _syncPendingRecordsInternal();
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  Future<void> _syncPendingRecordsInternal() async {
     try {
       final client = SupabaseConfig.client;
 
@@ -138,23 +169,7 @@ class SyncServiceImpl implements SyncService {
       final ganaderos = await _ganaderoRepository.getUnsynced();
       for (var ganadero in ganaderos) {
         try {
-          // No se manda 'fecha_registro': la tabla 'ganaderos' en Supabase no
-          // tiene esa columna (usa created_at/updated_at con default propio).
-          // Al incluirla, Postgrest rechazaba el upsert completo con un error
-          // de columna inexistente, atrapado silenciosamente abajo -- por eso
-          // ningun ganadero llegaba nunca a la nube.
-          final payload = {
-            'id': ganadero.id,
-            'cuenta_id': ganadero.clienteId,
-            'nombre': ganadero.nombre,
-            'apellido_paterno': ganadero.apellidoPaterno,
-            'apellido_materno': ganadero.apellidoMaterno,
-            'rancho': ganadero.rancho,
-            'telefono': ganadero.tel,
-            'correo': ganadero.correo,
-            'activo': ganadero.activo,
-          };
-
+          final payload = ganadero.toSupabaseMap();
           await client.from('ganaderos').upsert(payload, onConflict: 'id');
 
           if (!ganadero.sincronizado) {
@@ -217,8 +232,9 @@ class SyncServiceImpl implements SyncService {
           debugPrint('Error al respaldar medición ${medicion.id} en Supabase: $e');
         }
       }
+      debugPrint('[SYNC SERVICE] Sincronización de registros pendientes (Local -> Nube) completada.');
     } catch (e) {
-      debugPrint('Error global en syncPendingRecords: $e');
+      debugPrint('[SYNC SERVICE ERROR] Error masivo en syncPendingRecords: $e');
     }
   }
 
