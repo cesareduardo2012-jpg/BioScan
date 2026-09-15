@@ -12,6 +12,7 @@ class UsuariosTable {
   static const String columnFechaRegistro = 'fecha_registro';
   static const String columnUltimoAcceso = 'ultimo_acceso';
   static const String columnActivo = 'activo';
+  static const String columnSincronizado = 'sincronizado';
 
   static const String createTableQuery = '''
     CREATE TABLE IF NOT EXISTS $tableName (
@@ -26,6 +27,7 @@ class UsuariosTable {
       $columnFechaRegistro TEXT NOT NULL,
       $columnUltimoAcceso TEXT,
       $columnActivo INTEGER NOT NULL DEFAULT 1,
+      $columnSincronizado INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY ($columnClienteId) REFERENCES clientes (id) ON DELETE CASCADE
     )
   ''';

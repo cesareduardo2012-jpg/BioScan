@@ -47,6 +47,18 @@ class Cliente {
         'activo': activo ? 1 : 0,
       };
 
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'nombre': nombre,
+      'empresa': empresa,
+      'telefono': telefono,
+      'correo': correo,
+      'activo': activo,
+      // Omitimos fecha_registro por la misma razón de la migración en Supabase
+    };
+  }
+
   factory Cliente.fromMap(Map<String, dynamic> map) {
     return Cliente(
       id: map['id']?.toString() ?? '',
@@ -54,7 +66,7 @@ class Cliente {
       empresa: map['empresa']?.toString() ?? '',
       telefono: map['telefono']?.toString() ?? '',
       correo: map['correo']?.toString() ?? '',
-      fechaRegistro: map['fecha_registro']?.toString() ?? DateTime.now().toIso8601String(),
+      fechaRegistro: (map['fecha_registro'] ?? map['created_at'])?.toString() ?? DateTime.now().toIso8601String(),
       activo: map['activo'] == 1 || map['activo'] == true,
     );
   }
