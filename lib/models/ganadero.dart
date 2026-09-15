@@ -8,6 +8,7 @@ class Ganadero {
   final String telefono;
   final String correo;
   final String fechaRegistro;
+  final bool activo;
   final bool sincronizado;
 
   const Ganadero({
@@ -20,11 +21,12 @@ class Ganadero {
     required String tel,
     String? correo,
     String? fechaRegistro,
+    bool? activo,
     bool? sincronizado,
-  })  : clienteId = clienteId ?? '00000000-0000-0000-0000-000000000001',
-        telefono = tel,
+  })  : telefono = tel,
         correo = correo ?? '',
         fechaRegistro = fechaRegistro ?? '',
+        activo = activo ?? true,
         sincronizado = sincronizado ?? false;
 
   // Getter for backward compatibility with existing UI code
@@ -48,6 +50,7 @@ class Ganadero {
     String? tel,
     String? correo,
     String? fechaRegistro,
+    bool? activo,
     bool? sincronizado,
   }) {
     return Ganadero(
@@ -60,6 +63,7 @@ class Ganadero {
       tel: tel ?? telefono ?? this.telefono,
       correo: correo ?? this.correo,
       fechaRegistro: fechaRegistro ?? this.fechaRegistro,
+      activo: activo ?? this.activo,
       sincronizado: sincronizado ?? this.sincronizado,
     );
   }
@@ -74,13 +78,14 @@ class Ganadero {
         'telefono': telefono,
         'correo': correo,
         'fecha_registro': fechaRegistro,
+        'activo': activo ? 1 : 0,
         'sincronizado': sincronizado ? 1 : 0,
       };
 
   factory Ganadero.fromMap(Map<String, dynamic> map) {
     return Ganadero(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '00000000-0000-0000-0000-000000000001',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '',
       nombre: map['nombre']?.toString() ?? '',
       apellidoPaterno: (map['apellido_paterno'] ?? map['apellidoPaterno'])?.toString() ?? '',
       apellidoMaterno: (map['apellido_materno'] ?? map['apellidoMaterno'])?.toString() ?? '',
@@ -88,6 +93,7 @@ class Ganadero {
       tel: (map['telefono'] ?? map['tel'])?.toString() ?? '',
       correo: map['correo']?.toString() ?? '',
       fechaRegistro: (map['fecha_registro'] ?? map['fechaRegistro'])?.toString() ?? DateTime.now().toIso8601String(),
+      activo: map['activo'] == 1 || map['activo'] == true || map['activo'] == null,
       sincronizado: map['sincronizado'] == 1 || map['sincronizado'] == true,
     );
   }

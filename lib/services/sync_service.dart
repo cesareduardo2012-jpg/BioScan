@@ -68,8 +68,6 @@ class SyncServiceImpl implements SyncService {
       // 1. Sincronizar Cuentas/Clientes a Supabase Nube
       final clientes = await _clienteRepository.getClientes();
       for (var cliente in clientes) {
-        // No sincronizar la cuenta demo local
-        if (cliente.id == '00000000-0000-0000-0000-000000000001') continue;
         try {
           await client.from('cuentas').upsert({
             'id': cliente.id,
@@ -88,16 +86,19 @@ class SyncServiceImpl implements SyncService {
       // 2. Sincronizar Dispositivos a Supabase Nube
       final dispositivos = await _dispositivoRepository.getDispositivos();
       for (var disp in dispositivos) {
-        if (disp.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
-          await client.from('dispositivos').upsert({
+          final payload = <String, dynamic>{
             'id': disp.id,
             'cuenta_id': disp.clienteId,
             'numero_serie': disp.numeroSerie,
             'nombre': disp.nombre,
             'modelo': disp.modelo,
             'activo': disp.activo,
-          }, onConflict: 'id');
+          };
+          if (disp.fechaAsignacion != null) {
+            payload['fecha_asignacion'] = disp.fechaAsignacion;
+          }
+          await client.from('dispositivos').upsert(payload, onConflict: 'id');
           debugPrint('Dispositivo ${disp.nombre} respaldado en Supabase Nube.');
         } catch (e) {
           debugPrint('Error al respaldar dispositivo ${disp.id} en Supabase: $e');
@@ -107,7 +108,6 @@ class SyncServiceImpl implements SyncService {
       // 3. Sincronizar Usuarios a Supabase Nube
       final usuarios = await _usuarioRepository.getUsuarios();
       for (var usr in usuarios) {
-        if (usr.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         if (usr.sincronizado) continue;
         try {
           final usrPayload = <String, dynamic>{
@@ -137,7 +137,6 @@ class SyncServiceImpl implements SyncService {
       // 4. Sincronizar Ganaderos a Supabase Nube
       final ganaderos = await _ganaderoRepository.getUnsynced();
       for (var ganadero in ganaderos) {
-        if (ganadero.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
           // No se manda 'fecha_registro': la tabla 'ganaderos' en Supabase no
           // tiene esa columna (usa created_at/updated_at con default propio).
@@ -153,6 +152,7 @@ class SyncServiceImpl implements SyncService {
             'rancho': ganadero.rancho,
             'telefono': ganadero.tel,
             'correo': ganadero.correo,
+            'activo': ganadero.activo,
           };
 
           await client.from('ganaderos').upsert(payload, onConflict: 'id');
@@ -170,7 +170,6 @@ class SyncServiceImpl implements SyncService {
       // 5. Sincronizar Mediciones a Supabase Nube
       final mediciones = await _medicionRepository.getUnsynced();
       for (var medicion in mediciones) {
-        if (medicion.clienteId == '00000000-0000-0000-0000-000000000001') continue;
         try {
           final payload = <String, dynamic>{
             'id': medicion.id,
@@ -179,7 +178,11 @@ class SyncServiceImpl implements SyncService {
             'dispositivo_id': medicion.dispositivoId,
             'usuario_id': medicion.usuarioId,
             'observaciones': medicion.observaciones,
+            'es_simulado': medicion.isSimulado,
           };
+          if (medicion.pdfPath != null && medicion.pdfPath!.isNotEmpty) {
+            payload['pdf_path'] = medicion.pdfPath;
+          }
 
           // ph/densidad/temperatura son columnas NUMERIC en Supabase, pero
           // localmente son texto libre del sensor ("N/D" mientras no hay

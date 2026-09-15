@@ -30,7 +30,7 @@ class AuthService extends ChangeNotifier {
   bool get isAdmin => _currentUser?.isAdmin ?? false;
   bool get isOperador => _currentUser?.isOperador ?? false;
   String get activeClienteId =>
-      _currentUser?.clienteId ?? DatabaseMigrator.defaultClienteId;
+      _currentUser?.clienteId ?? '';
 
   // Mensaje de una sola lectura: cuando crear/editar/eliminar un operador
   // falla en la nube por una razón que NO es simplemente estar sin
@@ -65,10 +65,7 @@ class AuthService extends ChangeNotifier {
   Future<void> init() async {
     if (_initialized) return;
 
-    // 1. Asegurar la existencia del Administrador inicial si la base de datos está vacía de administradores
-    await ensureDefaultAdmin();
-
-    // 2. Intentar restaurar sesión activa desde SharedPreferences
+    // Intentar restaurar sesión activa desde SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     final savedUserId = prefs.getString(_prefUserIdKey);
 
@@ -84,39 +81,6 @@ class AuthService extends ChangeNotifier {
 
     _initialized = true;
     notifyListeners();
-  }
-
-  /// Provisión segura del Administrador inicial sin credenciales hardcodeadas en vistas.
-  Future<void> ensureDefaultAdmin() async {
-    const defaultClienteId = DatabaseMigrator.defaultClienteId;
-    final adminUser = await _usuarioRepository.getAdminByCliente(
-      defaultClienteId,
-    );
-
-    if (adminUser == null) {
-      const initialUsername = 'admin';
-      const initialRawPassword = 'admin123';
-      final salt = PasswordHasher.generateSalt();
-      final hash = PasswordHasher.hashPassword(initialRawPassword, salt);
-
-      final newAdmin = Usuario(
-        id: DatabaseMigrator.defaultAdminId,
-        clienteId: defaultClienteId,
-        username: initialUsername,
-        nombre: 'Administrador BioScan',
-        correo: 'admin@bioscan.com',
-        passwordHash: hash,
-        salt: salt,
-        rol: 'ADMINISTRADOR',
-        fechaRegistro: DateTime.now().toIso8601String(),
-        activo: true,
-      );
-
-      await _usuarioRepository.insertUsuario(newAdmin);
-      debugPrint(
-        'Administrador inicial provisionado con éxito (Username: $initialUsername).',
-      );
-    }
   }
 
   /// Inicia sesión validando credenciales y estado del usuario.
@@ -260,7 +224,7 @@ class AuthService extends ChangeNotifier {
         // Si el error viene de Supabase Auth debemos informarlo en lugar de
         // ocultarlo... EXCEPTO "credenciales inválidas": ese es exactamente
         // el error que da Supabase para el admin sembrado localmente
-        // (ensureDefaultAdmin) porque nunca se crea como usuario real en
+        // porque nunca se crea como usuario real en
         // Supabase Auth. Lanzar aquí bloqueaba permanentemente el login del
         // admin documentado (admin/admin123) en cualquier dispositivo con
         // internet, sin darle nunca la oportunidad de caer al respaldo local
@@ -298,7 +262,7 @@ class AuthService extends ChangeNotifier {
         final hash = PasswordHasher.hashPassword('admin123', salt);
         user = Usuario(
           id: DatabaseMigrator.defaultAdminId,
-          clienteId: DatabaseMigrator.defaultClienteId,
+          clienteId: '',
           username: 'admin',
           nombre: 'Administrador BioScan',
           correo: 'admin@bioscan.com',

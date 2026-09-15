@@ -29,8 +29,7 @@ class Medicion {
     this.fechaSincronizacion,
     this.pdfPath,
     bool? isSimulado,
-  })  : clienteId = clienteId ?? '00000000-0000-0000-0000-000000000001',
-        densidad = agua,
+  })  : densidad = agua,
         observaciones = observaciones ?? '',
         sincronizado = sincronizado ?? false,
         isSimulado = isSimulado ?? false;
@@ -76,7 +75,7 @@ class Medicion {
   factory Medicion.fromMap(Map<String, dynamic> map) {
     return Medicion(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '00000000-0000-0000-0000-000000000001',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '',
       ganaderoId: (map['ganadero_id'] ?? map['ganaderoId'])?.toString() ?? '',
       dispositivoId: (map['dispositivo_id'] ?? map['dispositivoId'])?.toString(),
       usuarioId: (map['usuario_id'] ?? map['usuarioId'])?.toString(),

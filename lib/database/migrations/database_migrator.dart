@@ -152,7 +152,21 @@ class DatabaseMigrator {
       await db.execute('DROP TABLE ${MedicionesTable.tableName}');
       await db.execute(MedicionesTable.createTableQuery); 
       await db.execute('''
-        INSERT INTO ${MedicionesTable.tableName}
+        INSERT INTO ${MedicionesTable.tableName} (
+          ${MedicionesTable.columnId},
+          ${MedicionesTable.columnClienteId},
+          ${MedicionesTable.columnGanaderoId},
+          ${MedicionesTable.columnDispositivoId},
+          ${MedicionesTable.columnUsuarioId},
+          ${MedicionesTable.columnPh},
+          ${MedicionesTable.columnDensidad},
+          ${MedicionesTable.columnTemperatura},
+          ${MedicionesTable.columnFecha},
+          ${MedicionesTable.columnObservaciones},
+          ${MedicionesTable.columnSincronizado},
+          ${MedicionesTable.columnFechaSincronizacion},
+          ${MedicionesTable.columnPdfPath}
+        )
         SELECT * FROM mediciones_v7_temp
       ''');
       await db.execute('DROP TABLE mediciones_v7_temp');
@@ -182,6 +196,15 @@ class DatabaseMigrator {
       final hasEsSimulado = medicionesInfo.any((c) => c['name'] == MedicionesTable.columnEsSimulado);
       if (!hasEsSimulado) {
         await db.execute('ALTER TABLE ${MedicionesTable.tableName} ADD COLUMN ${MedicionesTable.columnEsSimulado} INTEGER NOT NULL DEFAULT 0');
+      }
+    }
+
+    if (oldVersion < 11) {
+      // Migración v10/v11: Agregar columna activo a ganaderos para soft deletes
+      final ganaderosInfo = await db.rawQuery("PRAGMA table_info(${GanaderosTable.tableName})");
+      final hasActivo = ganaderosInfo.any((c) => c['name'] == GanaderosTable.columnActivo);
+      if (!hasActivo) {
+        await db.execute('ALTER TABLE ${GanaderosTable.tableName} ADD COLUMN ${GanaderosTable.columnActivo} INTEGER NOT NULL DEFAULT 1');
       }
     }
   }
