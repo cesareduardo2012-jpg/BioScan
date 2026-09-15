@@ -68,6 +68,7 @@ class Ganadero {
     );
   }
 
+  // Mapa para SQLite (Local First)
   Map<String, dynamic> toMap() => {
         'id': id,
         'cliente_id': clienteId,
@@ -81,6 +82,26 @@ class Ganadero {
         'activo': activo ? 1 : 0,
         'sincronizado': sincronizado ? 1 : 0,
       };
+
+  // Mapa para Supabase (Remote)
+  Map<String, dynamic> toSupabaseMap() {
+    // Asegurar formato de fecha ISO 8601 UTC
+    final fecha = DateTime.tryParse(fechaRegistro)?.toUtc().toIso8601String() ?? DateTime.now().toUtc().toIso8601String();
+    
+    return {
+      'id': id,
+      'cuenta_id': clienteId, // Mapeo explícito de cliente_id -> cuenta_id
+      'nombre': nombre,
+      'apellido_paterno': apellidoPaterno,
+      'apellido_materno': apellidoMaterno,
+      'rancho': rancho,
+      'telefono': telefono,
+      'correo': correo,
+      'fecha_registro': fecha,
+      'activo': activo,
+      // No mandamos 'sincronizado' porque es control local únicamente
+    };
+  }
 
   factory Ganadero.fromMap(Map<String, dynamic> map) {
     return Ganadero(
