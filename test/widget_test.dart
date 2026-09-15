@@ -259,6 +259,7 @@ void main() {
 
       final medicion = const Medicion(
         id: 'm-1',
+        clienteId: DatabaseMigrator.defaultClienteId,
         ganaderoId: 'g-1',
         dispositivoId: 'disp-1',
         usuarioId: DatabaseMigrator.defaultAdminId,
@@ -336,6 +337,7 @@ void main() {
       await ServiceLocator.medicionRepository.insertMedicion(
         const Medicion(
           id: 'm-alpha',
+          clienteId: 'cliente-a',
           ganaderoId: 'g-alpha',
           ph: '6.7',
           agua: '0.0%',
@@ -347,6 +349,7 @@ void main() {
       await ServiceLocator.medicionRepository.insertMedicion(
         const Medicion(
           id: 'm-beta',
+          clienteId: 'cliente-b',
           ganaderoId: 'g-beta',
           ph: '6.8',
           agua: '0.1%',

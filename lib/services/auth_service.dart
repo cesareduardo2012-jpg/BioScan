@@ -418,10 +418,6 @@ class AuthService extends ChangeNotifier {
           throw AuthException(
             'El nombre de usuario "$cleanUsername" ya se encuentra registrado en la nube. Elija otro.',
           );
-        } else if (e.runtimeType.toString() == 'PostgrestException') {
-          throw AuthException(
-            'Error en la nube al crear operador: ${e.toString()}',
-          );
         }
         // Fallback: si es error de red, continuamos para guardar offline.
         // Si NO es de red (sesión sin autenticar, RLS, etc.), igual se

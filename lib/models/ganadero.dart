@@ -86,9 +86,6 @@ class Ganadero {
 
   // Mapa para Supabase (Remote)
   Map<String, dynamic> toSupabaseMap() {
-    // Asegurar formato de fecha ISO 8601 UTC
-    final fecha = DateTime.tryParse(fechaRegistro)?.toUtc().toIso8601String() ?? DateTime.now().toUtc().toIso8601String();
-    
     return {
       'id': id,
       'cuenta_id': clienteId, // Mapeo explícito de cliente_id -> cuenta_id
@@ -98,8 +95,10 @@ class Ganadero {
       'rancho': rancho,
       'telefono': telefono,
       'correo': correo,
-      'fecha_registro': fecha,
       'activo': activo,
+      // No mandamos 'fecha_registro': la migracion 20260914211000 la elimina
+      // de public.ganaderos y se estandariza en created_at. Mandarla rompia
+      // el upsert COMPLETO con PostgrestException y ningun ganadero subia.
       // No mandamos 'sincronizado' porque es control local únicamente
     };
   }
