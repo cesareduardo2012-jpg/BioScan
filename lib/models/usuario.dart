@@ -82,6 +82,27 @@ class Usuario {
         'sincronizado': sincronizado ? 1 : 0,
       };
 
+  Map<String, dynamic> toSupabaseMap() {
+    final payload = <String, dynamic>{
+      'id': id,
+      'cuenta_id': clienteId,
+      'username': username,
+      'nombre': nombre,
+      'correo': correo,
+      'rol': rol,
+      'activo': activo,
+      // No mandamos fecha_registro ni password_hash a Supabase public.usuarios
+      // a menos que el esquema lo especifique. En el esquema anterior:
+      // "fecha_registro timestamp with time zone NOT NULL DEFAULT now()" existía,
+      // pero si se dropeó en ganaderos, podría haberse dropeado en usuarios.
+      // Por precaución lo omitimos para dejar que Supabase asigne su DEFAULT (created_at).
+    };
+    if (ultimoAcceso != null && ultimoAcceso!.isNotEmpty) {
+      payload['ultimo_acceso'] = ultimoAcceso;
+    }
+    return payload;
+  }
+
   factory Usuario.fromMap(Map<String, dynamic> map) {
     final rawRol = map['rol']?.toString() ?? 'OPERADOR';
     String normalizedRol = rawRol;
