@@ -36,6 +36,7 @@ class Usuario {
   bool get isAdmin =>
       const {'ADMINISTRADOR', 'ADMIN_CUENTA', 'SUPERADMIN', 'ADMIN'}.contains(rol.toUpperCase());
   bool get isOperador => rol.toUpperCase() == 'OPERADOR' || rol.toLowerCase() == 'tecnico' || rol.toLowerCase() == 'operator';
+  bool get isSuperAdmin => rol.toUpperCase() == 'SUPERADMIN';
 
   Usuario copyWith({
     String? id,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/dao/usuario_dao.dart';
 import '../models/usuario.dart';
+import '../models/cliente.dart';
 import '../services/auth_service.dart';
 import '../services/bluetooth_manager.dart';
 import '../services/thermal_printer_service.dart';
@@ -21,6 +22,8 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
   bool _isLoading = true;
   bool _isPrintingTest = false;
   String? _errorMessage;
+  Cliente? _activeCliente;
+  Usuario? _adminUserForOperator;
 
   @override
   void initState() {
@@ -76,12 +79,20 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
           .getOperatorByCliente(clienteId);
       final printer = await ThermalPrinterService.instance
           .getConfiguredPrinter();
+      final cliente = await ServiceLocator.clienteRepository.getClienteById(clienteId);
+
+      Usuario? adminForOperator;
+      if (auth.currentUser?.isOperador == true) {
+         adminForOperator = admin ?? await ServiceLocator.usuarioRepository.getAdminByCliente(clienteId);
+      }
 
       if (mounted) {
         setState(() {
-          _adminUser = admin ?? auth.currentUser;
+          _adminUser = admin ?? (auth.currentUser?.isAdmin == true ? auth.currentUser : null);
           _operatorUser = operator;
           _configuredPrinter = printer;
+          _activeCliente = cliente;
+          _adminUserForOperator = adminForOperator;
           _isLoading = false;
         });
       }
@@ -777,6 +788,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
+      appBar: AppBar(
+        title: const Text('Configuración y Perfil'),
+        backgroundColor: const Color(0xFF008C83),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: RefreshIndicator(
         onRefresh: _loadUsersData,
         child: ListView(
@@ -793,36 +810,383 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
               ),
               const SizedBox(height: 16),
             ],
+            
+            if (currentUser != null) _buildProfileSection(currentUser),
+            if (currentUser?.isSuperAdmin == false && _activeCliente != null) _buildCompanySection(),
+            if (currentUser?.isOperador == true && _adminUserForOperator != null) _buildAdminInfoSection(),
+            if (currentUser?.isAdmin == true) _buildOperatorManagementSection(isOperatorMode),
+            
+            _buildPrinterSection(),
+            _buildSimulatorSection(),
+            
+            _buildAboutSection(),
+            _buildTeamSection(),
+            
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
 
-            // SECCIÓN ADMINISTRADOR
-            const Text(
-              'PROPIETARIO DE LA CUENTA',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-                letterSpacing: 1.1,
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0, top: 24.0),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey,
+          letterSpacing: 1.1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileSection(Usuario currentUser) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('MI PERFIL'),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: const Color(0xFF008C83).withValues(alpha: 0.15),
+                  child: Icon(
+                    currentUser.isAdmin ? Icons.admin_panel_settings : (currentUser.isSuperAdmin ? Icons.shield : Icons.person),
+                    color: const Color(0xFF008C83),
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        currentUser.nombre,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Usuario: ${currentUser.username}', style: TextStyle(color: Colors.grey.shade700)),
+                      Text('Correo: ${currentUser.correo}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          currentUser.rol.toUpperCase(),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.indigo),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.lock_reset, color: Color(0xFF008C83)),
+                  tooltip: 'Cambiar Mi Contraseña',
+                  onPressed: _showChangeOwnPasswordDialog,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompanySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('MI EMPRESA'),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.business, color: Color(0xFF008C83)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _activeCliente!.nombre,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _activeCliente!.activo ? Colors.green.shade100 : Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        _activeCliente!.activo ? 'ACTIVA' : 'INACTIVA',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: _activeCliente!.activo ? Colors.green.shade800 : Colors.red.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(),
+                if (_activeCliente!.empresa.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Text('Razón Social: ${_activeCliente!.empresa}', style: TextStyle(color: Colors.grey.shade700)),
+                  ),
+                if (_activeCliente!.telefono.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Text('Teléfono: ${_activeCliente!.telefono}', style: TextStyle(color: Colors.grey.shade700)),
+                  ),
+                if (_activeCliente!.correo.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4.0),
+                    child: Text('Correo: ${_activeCliente!.correo}', style: TextStyle(color: Colors.grey.shade700)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAdminInfoSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('MI ADMINISTRADOR'),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.indigo.shade100,
+              child: const Icon(Icons.admin_panel_settings, color: Colors.indigo),
+            ),
+            title: Text(_adminUserForOperator!.nombre, style: const TextStyle(fontWeight: FontWeight.bold)),
+            subtitle: Text(_adminUserForOperator!.correo),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOperatorManagementSection(bool isOperatorMode) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Flexible(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 8.0, top: 24.0),
+                child: Text(
+                  'OPERADORES DE LA CUENTA (MÁX. 1)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.1),
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            if (_operatorUser == null && !isOperatorMode)
+              Padding(
+                padding: const EdgeInsets.only(top: 16.0),
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF008C83),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.person_add, size: 18),
+                  label: const Text('Crear Operador'),
+                  onPressed: _showCreateOperatorDialog,
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
+          ],
+        ),
+        if (_operatorUser != null)
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: Colors.blue.withValues(alpha: 0.15),
+                        child: const Icon(Icons.engineering, color: Colors.blue, size: 30),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _operatorUser!.nombre,
+                                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _operatorUser!.activo ? Colors.green.shade100 : Colors.red.shade100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    _operatorUser!.activo ? 'ACTIVO' : 'INACTIVO',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _operatorUser!.activo ? Colors.green.shade800 : Colors.red.shade800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text('Usuario: ${_operatorUser!.username}', style: TextStyle(color: Colors.grey.shade700)),
+                            Text('Rol: Operador Limitado', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Wrap(
+                    alignment: WrapAlignment.spaceEvenly,
+                    spacing: 8.0,
+                    runSpacing: 8.0,
+                    children: [
+                      TextButton.icon(
+                        icon: const Icon(Icons.edit, size: 18),
+                        label: const Text('Editar'),
+                        onPressed: _showEditOperatorDialog,
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.key, size: 18),
+                        label: const Text('Clave'),
+                        onPressed: _showChangeOperatorPasswordDialog,
+                      ),
+                      TextButton.icon(
+                        icon: Icon(
+                          _operatorUser!.activo ? Icons.block : Icons.check_circle_outline,
+                          size: 18,
+                          color: _operatorUser!.activo ? Colors.orange : Colors.green,
+                        ),
+                        label: Text(
+                          _operatorUser!.activo ? 'Desactivar' : 'Activar',
+                          style: TextStyle(color: _operatorUser!.activo ? Colors.orange : Colors.green),
+                        ),
+                        onPressed: _toggleOperatorStatus,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                        tooltip: 'Eliminar Operador',
+                        onPressed: _deleteOperator,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          Card(
+            elevation: 0,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.grey.shade300),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                children: [
+                  Icon(Icons.person_add_disabled, size: 48, color: Colors.grey.shade400),
+                  const SizedBox(height: 12),
+                  const Text('No hay usuario Operador registrado', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text('Puede registrar un usuario Operador para permitir mediciones limitadas.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF008C83),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Crear Usuario Operador'),
+                    onPressed: _showCreateOperatorDialog,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPrinterSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildSectionTitle('IMPRESORA TÉRMICA BLUETOOTH'),
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: TextButton.icon(
+                icon: const Icon(Icons.settings_bluetooth, size: 16, color: Color(0xFF008C83)),
+                label: const Text('Gestionar', style: TextStyle(color: Color(0xFF008C83))),
+                onPressed: _abrirConfigurarImpresora,
+              ),
+            ),
+          ],
+        ),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
                     CircleAvatar(
-                      radius: 26,
-                      backgroundColor: const Color(
-                        0xFF008C83,
-                      ).withValues(alpha: 0.15),
-                      child: const Icon(
-                        Icons.admin_panel_settings,
-                        color: Color(0xFF008C83),
-                        size: 30,
+                      radius: 24,
+                      backgroundColor: _configuredPrinter != null
+                          ? const Color(0xFF008C83).withValues(alpha: 0.15)
+                          : Colors.grey.shade200,
+                      child: Icon(
+                        Icons.print,
+                        color: _configuredPrinter != null ? const Color(0xFF008C83) : Colors.grey.shade600,
+                        size: 26,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -834,30 +1198,24 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                             children: [
                               Flexible(
                                 child: Text(
-                                  _adminUser?.nombre ?? 'Administrador',
-                                  style: const TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  _configuredPrinter != null ? _configuredPrinter!['name']! : 'Impresora No Configurada',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2,
-                                ),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Colors.indigo.shade100,
+                                  color: _configuredPrinter != null ? Colors.green.shade100 : Colors.grey.shade200,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Text(
-                                  'ADMINISTRADOR',
+                                child: Text(
+                                  _configuredPrinter != null ? 'CONECTADA / LISTA' : 'NO CONFIGURADA',
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.indigo,
+                                    color: _configuredPrinter != null ? Colors.green.shade800 : Colors.grey.shade700,
                                   ),
                                 ),
                               ),
@@ -865,318 +1223,73 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Usuario: ${_adminUser?.username ?? 'admin'}',
-                            style: TextStyle(color: Colors.grey.shade700),
-                          ),
-                          Text(
-                            'Correo: ${_adminUser?.correo ?? 'admin@bioscan.com'}',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 13,
-                            ),
+                            _configuredPrinter != null
+                                ? 'MAC: ${_configuredPrinter!['mac']} • Formato 58 mm'
+                                : 'Vincule una impresora térmica portátil para imprimir tickets de análisis',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                           ),
                         ],
                       ),
                     ),
-                    if (!isOperatorMode)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.lock_reset,
-                          color: Color(0xFF008C83),
-                        ),
-                        tooltip: 'Cambiar Mi Contraseña',
-                        onPressed: _showChangeOwnPasswordDialog,
-                      ),
                   ],
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // SECCIÓN OPERADOR (MAX 1)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Flexible(
-                  child: Text(
-                    'USUARIO OPERADOR (MÁX. 1 POR CUENTA)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                ),
-                if (_operatorUser == null && !isOperatorMode)
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF008C83),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: const Icon(Icons.person_add, size: 18),
-                    label: const Text('Crear Operador'),
-                    onPressed: _showCreateOperatorDialog,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            if (_operatorUser != null) ...[
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 26,
-                            backgroundColor: Colors.blue.withValues(
-                              alpha: 0.15,
-                            ),
-                            child: const Icon(
-                              Icons.engineering,
-                              color: Colors.blue,
-                              size: 30,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        _operatorUser!.nombre,
-                                        style: const TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _operatorUser!.activo
-                                            ? Colors.green.shade100
-                                            : Colors.red.shade100,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        _operatorUser!.activo
-                                            ? 'ACTIVO'
-                                            : 'INACTIVO',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
-                                          color: _operatorUser!.activo
-                                              ? Colors.green.shade800
-                                              : Colors.red.shade800,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Usuario: ${_operatorUser!.username}',
-                                  style: TextStyle(color: Colors.grey.shade700),
-                                ),
-                                Text(
-                                  'Rol: Operador Limitado',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          if (!isOperatorMode)
-                            TextButton.icon(
-                              icon: const Icon(Icons.edit, size: 18),
-                              label: const Text('Editar'),
-                              onPressed: _showEditOperatorDialog,
-                            ),
-                          TextButton.icon(
-                            icon: const Icon(Icons.key, size: 18),
-                            label: const Text('Clave'),
-                            onPressed: isOperatorMode
-                                ? _showChangeOwnPasswordDialog
-                                : _showChangeOperatorPasswordDialog,
-                          ),
-                          if (!isOperatorMode)
-                            TextButton.icon(
-                              icon: Icon(
-                                _operatorUser!.activo
-                                    ? Icons.block
-                                    : Icons.check_circle_outline,
-                                size: 18,
-                                color: _operatorUser!.activo
-                                    ? Colors.orange
-                                    : Colors.green,
-                              ),
-                              label: Text(
-                                _operatorUser!.activo
-                                    ? 'Desactivar'
-                                    : 'Activar',
-                                style: TextStyle(
-                                  color: _operatorUser!.activo
-                                      ? Colors.orange
-                                      : Colors.green,
-                                ),
-                              ),
-                              onPressed: _toggleOperatorStatus,
-                            ),
-                          if (!isOperatorMode)
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.redAccent,
-                              ),
-                              tooltip: 'Eliminar Operador',
-                              onPressed: _deleteOperator,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: const Row(
+                const Divider(height: 24),
+                Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                    SizedBox(width: 10),
                     Expanded(
-                      child: Text(
-                        'Límite de cuenta alcanzado: 1 Administrador + 1 Operador. Para crear un nuevo operador debe eliminar o desactivar el existente.',
-                        style: TextStyle(fontSize: 12, color: Colors.blue),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ] else ...[
-              Card(
-                elevation: 0,
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: Colors.grey.shade300,
-                    style: BorderStyle.solid,
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.person_add_disabled,
-                        size: 48,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        'No hay usuario Operador registrado',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Puede registrar un usuario Operador para permitir mediciones limitadas.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
+                      child: FilledButton.icon(
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF008C83),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        icon: const Icon(Icons.person_add),
-                        label: const Text('Crear Usuario Operador'),
-                        onPressed: _showCreateOperatorDialog,
+                        icon: const Icon(Icons.bluetooth_searching, size: 18),
+                        label: Text(_configuredPrinter != null ? 'Cambiar Impresora' : 'Configurar Impresora'),
+                        onPressed: _abrirConfigurarImpresora,
+                      ),
+                    ),
+                    if (_configuredPrinter != null) ...[
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF005267),
+                          side: const BorderSide(color: Color(0xFF005267)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: _isPrintingTest
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF005267)))
+                            : const Icon(Icons.receipt_long, size: 18),
+                        label: const Text('Prueba'),
+                        onPressed: _isPrintingTest ? null : _imprimirPruebaRapida,
                       ),
                     ],
-                  ),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 24),
-
-            // SECCIÓN IMPRESORA TÉRMICA BLUETOOTH
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Flexible(
-                  child: Text(
-                    'IMPRESORA TÉRMICA BLUETOOTH',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  icon: const Icon(
-                    Icons.settings_bluetooth,
-                    size: 16,
-                    color: Color(0xFF008C83),
-                  ),
-                  label: const Text(
-                    'Gestionar',
-                    style: TextStyle(color: Color(0xFF008C83)),
-                  ),
-                  onPressed: _abrirConfigurarImpresora,
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Card(
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSimulatorSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('HERRAMIENTAS DE DESARROLLO Y PRUEBAS'),
+        Builder(
+          builder: (ctx) {
+            final isSimulationActive = BluetoothManager.instance.isSimulationMode;
+            return Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
+                side: BorderSide(
+                  color: isSimulationActive ? Colors.deepPurple.shade300 : Colors.transparent,
+                  width: 1.5,
+                ),
               ),
+              color: isSimulationActive ? Colors.deepPurple.shade50.withValues(alpha: 0.6) : Colors.white,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -1186,16 +1299,8 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                       children: [
                         CircleAvatar(
                           radius: 24,
-                          backgroundColor: _configuredPrinter != null
-                              ? const Color(0xFF008C83).withValues(alpha: 0.15)
-                              : Colors.grey.shade200,
-                          child: Icon(
-                            Icons.print,
-                            color: _configuredPrinter != null
-                                ? const Color(0xFF008C83)
-                                : Colors.grey.shade600,
-                            size: 26,
-                          ),
+                          backgroundColor: isSimulationActive ? Colors.deepPurple.shade100 : Colors.grey.shade100,
+                          child: Icon(Icons.science_rounded, color: isSimulationActive ? Colors.deepPurple : Colors.grey.shade700, size: 28),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -1204,40 +1309,20 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Flexible(
-                                    child: Text(
-                                      _configuredPrinter != null
-                                          ? _configuredPrinter!['name']!
-                                          : 'Impresora No Configurada',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
+                                  const Text('Modo Simulador', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                                   const SizedBox(width: 8),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: _configuredPrinter != null
-                                          ? Colors.green.shade100
-                                          : Colors.grey.shade200,
+                                      color: isSimulationActive ? Colors.green.shade100 : Colors.grey.shade200,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
-                                      _configuredPrinter != null
-                                          ? 'CONECTADA / LISTA'
-                                          : 'NO CONFIGURADA',
+                                      isSimulationActive ? 'SIMULADOR ACTIVO' : 'HARDWARE REAL',
                                       style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
-                                        color: _configuredPrinter != null
-                                            ? Colors.green.shade800
-                                            : Colors.grey.shade700,
+                                        color: isSimulationActive ? Colors.green.shade800 : Colors.grey.shade700,
                                       ),
                                     ),
                                   ),
@@ -1245,228 +1330,123 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                _configuredPrinter != null
-                                    ? 'MAC: ${_configuredPrinter!['mac']} • Formato 58 mm'
-                                    : 'Vincule una impresora térmica portátil para imprimir tickets de análisis',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade600,
-                                ),
+                                isSimulationActive ? 'Conectado a BioScan-Demo • Batería 100%' : 'Buscando prototipo físico ESP32 vía BLE',
+                                style: TextStyle(fontSize: 12, color: isSimulationActive ? Colors.deepPurple.shade700 : Colors.grey.shade600),
                               ),
                             ],
                           ),
                         ),
+                        Switch(
+                          value: isSimulationActive,
+                          activeThumbColor: Colors.deepPurple,
+                          activeTrackColor: Colors.deepPurple.shade200,
+                          onChanged: (enabled) {
+                            BluetoothManager.instance.setSimulationMode(enabled);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  enabled
+                                      ? 'Modo Simulador Activo: Dispositivo BioScan-Demo listo para pruebas'
+                                      : 'Modo Simulador Desactivado: Cambiando a hardware Bluetooth real',
+                                ),
+                                backgroundColor: enabled ? Colors.deepPurple : const Color(0xFF008C83),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
-                    const Divider(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF008C83),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            icon: const Icon(
-                              Icons.bluetooth_searching,
-                              size: 18,
-                            ),
-                            label: Text(
-                              _configuredPrinter != null
-                                  ? 'Cambiar Impresora'
-                                  : 'Configurar Impresora',
-                            ),
-                            onPressed: _abrirConfigurarImpresora,
-                          ),
-                        ),
-                        if (_configuredPrinter != null) ...[
-                          const SizedBox(width: 10),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF005267),
-                              side: const BorderSide(color: Color(0xFF005267)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            icon: _isPrintingTest
-                                ? const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF005267),
-                                    ),
-                                  )
-                                : const Icon(Icons.receipt_long, size: 18),
-                            label: const Text('Prueba'),
-                            onPressed: _isPrintingTest
-                                ? null
-                                : _imprimirPruebaRapida,
-                          ),
-                        ],
-                      ],
+                    const SizedBox(height: 10),
+                    Text(
+                      'Permite realizar mediciones completas por etapas (Densidad, Temperatura y pH) y compilar reportes PDF de forma 100% autónoma sin requerir el sensor físico conectado.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.3),
                     ),
                   ],
                 ),
               ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // SECCIÓN SIMULADOR DE HARDWARE
-            const Text(
-              'HERRAMIENTAS DE DESARROLLO Y PRUEBAS',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-                letterSpacing: 1.1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Builder(
-              builder: (ctx) {
-                final isSimulationActive =
-                    BluetoothManager.instance.isSimulationMode;
-                return Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: isSimulationActive
-                          ? Colors.deepPurple.shade300
-                          : Colors.transparent,
-                      width: 1.5,
-                    ),
-                  ),
-                  color: isSimulationActive
-                      ? Colors.deepPurple.shade50.withValues(alpha: 0.6)
-                      : Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundColor: isSimulationActive
-                                  ? Colors.deepPurple.shade100
-                                  : Colors.grey.shade100,
-                              child: Icon(
-                                Icons.science_rounded,
-                                color: isSimulationActive
-                                    ? Colors.deepPurple
-                                    : Colors.grey.shade700,
-                                size: 28,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        'Modo Simulador',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: isSimulationActive
-                                              ? Colors.green.shade100
-                                              : Colors.grey.shade200,
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          isSimulationActive
-                                              ? 'SIMULADOR ACTIVO'
-                                              : 'HARDWARE REAL',
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: isSimulationActive
-                                                ? Colors.green.shade800
-                                                : Colors.grey.shade700,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    isSimulationActive
-                                        ? 'Conectado a BioScan-Demo • Batería 100%'
-                                        : 'Buscando prototipo físico ESP32 vía BLE',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isSimulationActive
-                                          ? Colors.deepPurple.shade700
-                                          : Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: isSimulationActive,
-                              activeThumbColor: Colors.deepPurple,
-                              activeTrackColor: Colors.deepPurple.shade200,
-                              onChanged: (enabled) {
-                                BluetoothManager.instance.setSimulationMode(
-                                  enabled,
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      enabled
-                                          ? 'Modo Simulador Activo: Dispositivo BioScan-Demo listo para pruebas'
-                                          : 'Modo Simulador Desactivado: Cambiando a hardware Bluetooth real',
-                                    ),
-                                    backgroundColor: enabled
-                                        ? Colors.deepPurple
-                                        : const Color(0xFF008C83),
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          'Permite realizar mediciones completas por etapas (Densidad, Temperatura y pH) y compilar reportes PDF de forma 100% autónoma sin requerir el sensor físico conectado.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                            height: 1.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-          ],
+            );
+          },
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _buildAboutSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('ACERCA DE BIOSCAN'),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              children: [
+                const Icon(Icons.biotech, size: 48, color: Color(0xFF008C83)),
+                const SizedBox(height: 12),
+                const Text(
+                  'BioScan',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF005267)),
+                ),
+                const Text(
+                  '"Confianza en cada gota"',
+                  style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'BioScan es una solución tecnológica enfocada en ayudar a pequeños y medianos productores y procesadores de lácteos a obtener información rápida sobre la calidad de la leche mediante un dispositivo portátil.\n\nFunciona como un "laboratorio de bolsillo" para obtener al instante datos vitales de pH, temperatura y densidad.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
+                ),
+                const Divider(height: 32),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Versión de la App', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                    const Text('1.0.0', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTeamSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('NUESTRO EQUIPO'),
+        Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                const Text(
+                  'El equipo detrás de BioScan está comprometido con la innovación tecnológica en el sector lácteo, aportando pasión y experiencia para transformar el monitoreo de calidad.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.black87, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.teal.shade50,
+                    child: const Icon(Icons.groups, color: Colors.teal),
+                  ),
+                  title: const Text('Equipo BioScan', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Desarrollo e Innovación'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

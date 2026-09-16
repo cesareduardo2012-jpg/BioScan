@@ -16,6 +16,7 @@ class GanaderoDao {
   Future<List<Ganadero>> getAll() async {
     final maps = await _database.db.query(
       GanaderosTable.tableName,
+      where: '${GanaderosTable.columnActivo} = 1',
       orderBy: '${GanaderosTable.columnNombre} ASC',
     );
     return compute(_mapGanaderosList, maps);
@@ -43,7 +44,7 @@ class GanaderoDao {
     debugPrint('[SQLITE DAO] Obteniendo ganaderos para clienteId: $clienteId...');
     final maps = await _database.db.query(
       GanaderosTable.tableName,
-      where: '${GanaderosTable.columnClienteId} = ?',
+      where: '${GanaderosTable.columnClienteId} = ? AND ${GanaderosTable.columnActivo} = 1',
       whereArgs: [clienteId],
     );
     debugPrint('[SQLITE DAO] Ganaderos encontrados para cliente $clienteId: ${maps.length}');
