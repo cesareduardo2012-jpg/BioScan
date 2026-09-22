@@ -92,28 +92,40 @@ class Medicion {
     );
   }
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'cliente_id': clienteId,
-        'ganadero_id': ganaderoId,
-        'dispositivo_id': dispositivoId,
-        'usuario_id': usuarioId,
-        'ph': ph,
-        'densidad': densidad,
-        'temperatura': temperatura,
-        'fecha': fecha,
-        'observaciones': observaciones,
-        'sincronizado': sincronizado ? 1 : 0,
-        'fecha_sincronizacion': fechaSincronizacion,
-        'pdf_path': pdfPath,
-        'es_simulado': isSimulado ? 1 : 0,
-      };
+  Map<String, dynamic> toMap() {
+    double parseSensorNumber(String val) {
+      final text = val.replaceAll(RegExp(r'[^0-9.-]'), '');
+      if (text.isEmpty) return 0.0;
+      return double.tryParse(text) ?? 0.0;
+    }
+
+    return {
+      'id': id,
+      'cliente_id': clienteId,
+      'ganadero_id': ganaderoId,
+      'dispositivo_id': dispositivoId,
+      'usuario_id': usuarioId,
+      'ph': parseSensorNumber(ph),
+      'densidad': parseSensorNumber(densidad),
+      'temperatura': parseSensorNumber(temperatura),
+      'fecha': fecha,
+      'observaciones': observaciones.replaceAll('\x00', ''),
+      'sincronizado': sincronizado ? 1 : 0,
+      'fecha_sincronizacion': fechaSincronizacion,
+      'pdf_path': pdfPath,
+      'es_simulado': isSimulado ? 1 : 0,
+    };
+  }
 
   Map<String, dynamic> toSupabaseMap() {
     double? parseSensorNumber(String val) {
       final text = val.replaceAll(RegExp(r'[^0-9.-]'), '');
       if (text.isEmpty) return null;
       return double.tryParse(text);
+    }
+
+    bool isValidUuid(String uuid) {
+      return RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', caseSensitive: false).hasMatch(uuid);
     }
 
     // Default values to satisfy Supabase NOT NULL and CHECK constraints
@@ -139,11 +151,15 @@ class Medicion {
       'densidad': safeDens,
       'temperatura': safeTemp,
       'fecha': fechaUtc,
-      'observaciones': observaciones,
+      'observaciones': observaciones.replaceAll('\x00', ''), // Limpiar null bytes heredados de registros viejos
     };
 
-    if (dispositivoId != null && dispositivoId!.isNotEmpty) payload['dispositivo_id'] = dispositivoId;
-    if (usuarioId != null && usuarioId!.isNotEmpty) payload['usuario_id'] = usuarioId;
+    if (dispositivoId != null && isValidUuid(dispositivoId!)) {
+      payload['dispositivo_id'] = dispositivoId;
+    }
+    if (usuarioId != null && isValidUuid(usuarioId!)) {
+      payload['usuario_id'] = usuarioId;
+    }
     if (pdfPath != null && pdfPath!.isNotEmpty) payload['pdf_path'] = pdfPath;
     
     // NOTA: es_simulado no existe en Supabase public.mediciones según el esquema proporcionado.

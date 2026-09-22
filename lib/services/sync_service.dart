@@ -98,80 +98,123 @@ class SyncServiceImpl implements SyncService {
 
       // 1. Sincronizar Cuentas/Clientes a Supabase Nube
       final clientes = await _clienteRepository.getClientes();
-      for (var cliente in clientes) {
+      if (clientes.isNotEmpty) {
         try {
-          await client.from('cuentas').upsert(cliente.toSupabaseMap(), onConflict: 'id');
-          debugPrint('Cliente/Cuenta ${cliente.nombre} (${cliente.id}) respaldado en Supabase Nube.');
+          final payload = clientes.map((c) => c.toSupabaseMap()).toList();
+          await client.from('cuentas').upsert(payload, onConflict: 'id');
+          debugPrint('${clientes.length} Clientes/Cuentas respaldados en Supabase Nube.');
         } catch (e) {
-          debugPrint('Error al respaldar cliente ${cliente.id} en Supabase: $e');
+          debugPrint('Bulk upsert de clientes falló, usando fallback secuencial: $e');
+          for (var c in clientes) {
+            try { await client.from('cuentas').upsert(c.toSupabaseMap(), onConflict: 'id'); } catch (_) {}
+          }
         }
       }
 
       // 2. Sincronizar Dispositivos a Supabase Nube
       final dispositivos = await _dispositivoRepository.getDispositivos();
-      for (var disp in dispositivos) {
+      if (dispositivos.isNotEmpty) {
         try {
-          final payload = disp.toSupabaseMap();
+          final payload = dispositivos.map((d) => d.toSupabaseMap()).toList();
           await client.from('dispositivos').upsert(payload, onConflict: 'id');
-          debugPrint('Dispositivo ${disp.nombre} respaldado en Supabase Nube.');
+          debugPrint('${dispositivos.length} Dispositivos respaldados en Supabase Nube.');
         } catch (e) {
-          debugPrint('Error al respaldar dispositivo ${disp.id} en Supabase: $e');
+          debugPrint('Bulk upsert de dispositivos falló, usando fallback secuencial: $e');
+          for (var d in dispositivos) {
+            try { await client.from('dispositivos').upsert(d.toSupabaseMap(), onConflict: 'id'); } catch (_) {}
+          }
         }
       }
 
       // 3. Sincronizar Usuarios a Supabase Nube
       final usuarios = await _usuarioRepository.getUsuarios();
-      for (var usr in usuarios) {
-        if (usr.sincronizado) continue;
+      final unsyncedUsuarios = usuarios.where((u) => !u.sincronizado).toList();
+      if (unsyncedUsuarios.isNotEmpty) {
         try {
-          final usrPayload = usr.toSupabaseMap();
-          await client.from('usuarios').upsert(usrPayload, onConflict: 'id');
+          final payload = unsyncedUsuarios.map((u) => u.toSupabaseMap()).toList();
+          await client.from('usuarios').upsert(payload, onConflict: 'id');
 
-          if (!usr.sincronizado) {
+          for (var usr in unsyncedUsuarios) {
             final updated = usr.copyWith(sincronizado: true);
             await _usuarioRepository.updateUsuario(updated);
           }
-          debugPrint('Usuario ${usr.username} respaldado en Supabase Nube.');
+          debugPrint('${unsyncedUsuarios.length} Usuarios respaldados en Supabase Nube.');
         } catch (e) {
-          debugPrint('Error al respaldar usuario ${usr.id} en Supabase: $e');
+          debugPrint('Bulk upsert de usuarios falló, usando fallback secuencial: $e');
+          for (var u in unsyncedUsuarios) {
+            try {
+              await client.from('usuarios').upsert(u.toSupabaseMap(), onConflict: 'id');
+              final updated = u.copyWith(sincronizado: true);
+              await _usuarioRepository.updateUsuario(updated);
+            } catch (_) {}
+          }
         }
       }
 
       // 4. Sincronizar Ganaderos a Supabase Nube
       final ganaderos = await _ganaderoRepository.getUnsynced();
-      for (var ganadero in ganaderos) {
+      if (ganaderos.isNotEmpty) {
         try {
-          final payload = ganadero.toSupabaseMap();
+          final payload = ganaderos.map((g) => g.toSupabaseMap()).toList();
           await client.from('ganaderos').upsert(payload, onConflict: 'id');
 
-          if (!ganadero.sincronizado) {
+          for (var ganadero in ganaderos) {
             final updated = ganadero.copyWith(sincronizado: true);
             await _ganaderoRepository.updateGanadero(updated);
           }
-          debugPrint('Ganadero ${ganadero.nombreCompleto} (${ganadero.id}) respaldado en Supabase Nube con éxito.');
+          debugPrint('${ganaderos.length} Ganaderos respaldados en Supabase Nube.');
         } catch (e) {
-          debugPrint('Error al respaldar ganadero ${ganadero.id} en Supabase: $e');
+          debugPrint('Bulk upsert de ganaderos falló, usando fallback secuencial: $e');
+          for (var g in ganaderos) {
+            try {
+              await client.from('ganaderos').upsert(g.toSupabaseMap(), onConflict: 'id');
+              final updated = g.copyWith(sincronizado: true);
+              await _ganaderoRepository.updateGanadero(updated);
+            } catch (_) {}
+          }
         }
       }
 
       // 5. Sincronizar Mediciones a Supabase Nube
       final mediciones = await _medicionRepository.getUnsynced();
-      for (var medicion in mediciones) {
+      if (mediciones.isNotEmpty) {
         try {
-          final payload = medicion.toSupabaseMap();
-
+          final payload = mediciones.map((m) => m.toSupabaseMap()).toList();
           await client.from('mediciones').upsert(payload, onConflict: 'id');
 
-          if (!medicion.sincronizado) {
+          final nowIso = DateTime.now().toIso8601String();
+          for (var medicion in mediciones) {
             final updated = medicion.copyWith(
               sincronizado: true,
-              fechaSincronizacion: DateTime.now().toIso8601String(),
+              fechaSincronizacion: nowIso,
             );
             await _medicionRepository.updateMedicion(updated);
           }
-          debugPrint('Medición ${medicion.id} respaldada en Supabase Nube con éxito.');
+          debugPrint('${mediciones.length} Mediciones respaldadas en Supabase Nube con éxito.');
         } catch (e) {
-          debugPrint('Error al respaldar medición ${medicion.id} en Supabase: $e');
+          debugPrint('Bulk upsert de mediciones falló, usando fallback secuencial: $e');
+          final nowIso = DateTime.now().toIso8601String();
+          for (var m in mediciones) {
+            try {
+              await client.from('mediciones').upsert(m.toSupabaseMap(), onConflict: 'id');
+              final updated = m.copyWith(sincronizado: true, fechaSincronizacion: nowIso);
+              await _medicionRepository.updateMedicion(updated);
+            } catch (fallbackError) {
+              // Si la medición ESP32 falla, es casi seguro por un error de Foreign Key
+              // porque el dispositivo ESP32 asociado falló al subir (por colisión de MAC address).
+              // Intentamos un reintento de emergencia: subimos la medición SIN vincularla al dispositivo.
+              try {
+                final retryPayload = m.toSupabaseMap();
+                retryPayload.remove('dispositivo_id');
+                await client.from('mediciones').upsert(retryPayload, onConflict: 'id');
+                final updated = m.copyWith(sincronizado: true, fechaSincronizacion: nowIso);
+                await _medicionRepository.updateMedicion(updated);
+                debugPrint('Medición recuperada y subida sin dispositivo.');
+              } catch (_) {
+                debugPrint('Reintento de emergencia falló para medición ${m.id}');
+              }
+            }
+          }
         }
       }
       debugPrint('[SYNC SERVICE] Sincronización de registros pendientes (Local -> Nube) completada.');
