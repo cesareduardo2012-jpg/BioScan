@@ -4,7 +4,6 @@ import '../tables/dispositivos_table.dart';
 import '../tables/ganaderos_table.dart';
 import '../tables/mediciones_table.dart';
 import '../tables/usuarios_table.dart';
-import '../../utils/uuid_generator.dart';
 
 class DatabaseMigrator {
   DatabaseMigrator._();
@@ -208,70 +207,5 @@ class DatabaseMigrator {
         await db.execute('ALTER TABLE ${GanaderosTable.tableName} ADD COLUMN ${GanaderosTable.columnActivo} INTEGER NOT NULL DEFAULT 1');
       }
     }
-
-    if (oldVersion < 12) {
-      await _repararDispositivosConIdNoUuid(db);
-    }
   }
-
-  /// Repara dispositivos cuya llave primaria quedo siendo la MAC del ESP32
-  /// ("D4:E9:F4:BB:41:2A") en vez de un UUID.
-  ///
-  /// home_screen.dart llegó a usar la MAC directamente como id al registrar el
-  /// sensor. En Supabase, dispositivos.id y mediciones.dispositivo_id son de
-  /// tipo uuid, asi que Postgrest respondia 22P02 "invalid input syntax for
-  /// type uuid" y rechazaba el upsert COMPLETO -- tanto el del dispositivo
-  /// como el de CUALQUIER medicion que lo referenciara. El codigo ya genera
-  /// UUID y guarda la MAC en numero_serie, pero los registros creados antes
-  /// de ese cambio siguen en el SQLite de cada telefono y bloquean su sync.
-  ///
-  /// Se le asigna un UUID nuevo conservando la MAC en numero_serie, se
-  /// reapuntan sus mediciones y se marcan como no sincronizadas para que el
-  /// siguiente ciclo las reintente.
-  static Future<void> _repararDispositivosConIdNoUuid(Database db) async {
-    final dispositivos = await db.query(DispositivosTable.tableName);
-
-    for (final disp in dispositivos) {
-      final viejoId = disp[DispositivosTable.columnId]?.toString() ?? '';
-      if (viejoId.isEmpty || _esUuid(viejoId)) continue;
-
-      final nuevoId = UuidGenerator.generate();
-      final serieActual = disp[DispositivosTable.columnNumeroSerie]?.toString() ?? '';
-
-      await db.transaction((txn) async {
-        // El id es la llave primaria, asi que se inserta la fila corregida y
-        // se borra la vieja en vez de un UPDATE sobre la PK.
-        final fila = Map<String, Object?>.from(disp);
-        fila[DispositivosTable.columnId] = nuevoId;
-        // La MAC se conserva como numero de serie: es el unico dato que
-        // permite volver a reconocer el sensor via getDispositivoByNumeroSerie.
-        if (serieActual.isEmpty) {
-          fila[DispositivosTable.columnNumeroSerie] = viejoId;
-        }
-        await txn.insert(DispositivosTable.tableName, fila);
-
-        await txn.update(
-          MedicionesTable.tableName,
-          {
-            MedicionesTable.columnDispositivoId: nuevoId,
-            MedicionesTable.columnSincronizado: 0,
-          },
-          where: '${MedicionesTable.columnDispositivoId} = ?',
-          whereArgs: [viejoId],
-        );
-
-        await txn.delete(
-          DispositivosTable.tableName,
-          where: '${DispositivosTable.columnId} = ?',
-          whereArgs: [viejoId],
-        );
-      });
-    }
-  }
-
-  static final RegExp _uuidPattern = RegExp(
-    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
-  );
-
-  static bool _esUuid(String value) => _uuidPattern.hasMatch(value);
 }
