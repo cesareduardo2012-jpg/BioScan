@@ -48,15 +48,38 @@ class GanaderoRepositoryImpl implements GanaderoRepository {
 
   @override
   Future<void> deleteGanadero(String id) async {
-    debugPrint('[GANADERO REPOSITORY] Eliminando ganadero ID: $id');
+    debugPrint('[GANADERO REPOSITORY] Eliminando ganadero (Soft Delete) ID: $id');
+    
+    // 1. Obtener el ganadero local
+    final ganadero = await _ganaderoDao.getById(id);
+    if (ganadero == null) {
+      debugPrint('[GANADERO REPOSITORY] El ganadero $id no existe localmente.');
+      return;
+    }
+
+    // 2. Marcar como inactivo
+    final deletedGanadero = ganadero.copyWith(
+      activo: false,
+      sincronizado: false,
+    );
+
+    // 3. Actualizar en Supabase si hay red
     if (SupabaseConfig.isInitialized) {
       try {
-        await SupabaseConfig.client.from('ganaderos').delete().eq('id', id);
-        debugPrint('[GANADERO REPOSITORY] Eliminado de Supabase exitosamente.');
+        final payload = deletedGanadero.toSupabaseMap();
+        await SupabaseConfig.client.from('ganaderos').upsert(payload, onConflict: 'id');
+        
+        // Si se actualizó en Supabase, lo marcamos como sincronizado
+        final syncedDeletedGanadero = deletedGanadero.copyWith(sincronizado: true);
+        await _ganaderoDao.update(syncedDeletedGanadero);
+        debugPrint('[GANADERO REPOSITORY] Soft delete en Supabase exitoso.');
+        return;
       } catch (e) {
-        debugPrint('[GANADERO REPOSITORY] Aviso: No se pudo eliminar de Supabase: $e');
+        debugPrint('[GANADERO REPOSITORY] Aviso: No se pudo hacer soft delete en Supabase: $e');
       }
     }
-    await _ganaderoDao.delete(id);
+    
+    // 4. Si falló Supabase o no hay red, actualizar solo en SQLite para que la sincronización lo suba después
+    await _ganaderoDao.update(deletedGanadero);
   }
 }

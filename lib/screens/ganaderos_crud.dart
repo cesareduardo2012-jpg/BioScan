@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/ganadero.dart';
+import '../utils/service_locator.dart';
 
 class GanaderosCRUD extends StatefulWidget {
   const GanaderosCRUD({
@@ -344,19 +345,21 @@ class _GanaderosCRUDState extends State<GanaderosCRUD> {
                       subtitle: Text(
                         'Rancho: ${ganadero.rancho} • Tel: ${ganadero.tel}',
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => _showForm(ganadero: ganadero),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _confirmDelete(ganadero),
-                          ),
-                        ],
-                      ),
+                      trailing: ServiceLocator.authService.currentUser?.isOperador == true
+                          ? null
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit, color: Colors.blue),
+                                  onPressed: () => _showForm(ganadero: ganadero),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () => _confirmDelete(ganadero),
+                                ),
+                              ],
+                            ),
                     ),
                   );
                 },

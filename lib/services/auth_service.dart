@@ -235,12 +235,15 @@ class AuthService extends ChangeNotifier {
             'Debes confirmar tu correo electrónico antes de iniciar sesión.',
           );
         } else if (e.runtimeType.toString() == 'AuthException') {
-          // Lanzamos el error exacto que nos da Supabase
-          throw AuthException(
-            'Error de nube: ${e.toString().replaceAll('AuthException: ', '')}',
-          );
+          if (!errorString.contains('invalid login credentials') && !errorString.contains('credenciales inválidas')) {
+            // Lanzamos el error exacto que nos da Supabase
+            throw AuthException(
+              'Error de nube: ${e.toString().replaceAll('AuthException: ', '')}',
+            );
+          }
         }
-        // Si es error de red, dejamos que pase al fallback de SQLite
+        // Si es error de red o credenciales inválidas (para el admin local), 
+        // dejamos que pase al fallback de SQLite
       }
     }
 
@@ -262,7 +265,7 @@ class AuthService extends ChangeNotifier {
         final hash = PasswordHasher.hashPassword('admin123', salt);
         user = Usuario(
           id: DatabaseMigrator.defaultAdminId,
-          clienteId: '',
+          clienteId: DatabaseMigrator.defaultClienteId,
           username: 'admin',
           nombre: 'Administrador BioScan',
           correo: 'admin@bioscan.com',

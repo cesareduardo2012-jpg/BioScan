@@ -100,14 +100,7 @@ class SyncServiceImpl implements SyncService {
       final clientes = await _clienteRepository.getClientes();
       for (var cliente in clientes) {
         try {
-          await client.from('cuentas').upsert({
-            'id': cliente.id,
-            'nombre': cliente.nombre,
-            'empresa': cliente.empresa,
-            'telefono': cliente.telefono,
-            'correo': cliente.correo,
-            'activo': cliente.activo,
-          }, onConflict: 'id');
+          await client.from('cuentas').upsert(cliente.toSupabaseMap(), onConflict: 'id');
           debugPrint('Cliente/Cuenta ${cliente.nombre} (${cliente.id}) respaldado en Supabase Nube.');
         } catch (e) {
           debugPrint('Error al respaldar cliente ${cliente.id} en Supabase: $e');
@@ -118,17 +111,7 @@ class SyncServiceImpl implements SyncService {
       final dispositivos = await _dispositivoRepository.getDispositivos();
       for (var disp in dispositivos) {
         try {
-          final payload = <String, dynamic>{
-            'id': disp.id,
-            'cuenta_id': disp.clienteId,
-            'numero_serie': disp.numeroSerie,
-            'nombre': disp.nombre,
-            'modelo': disp.modelo,
-            'activo': disp.activo,
-          };
-          if (disp.fechaAsignacion != null) {
-            payload['fecha_asignacion'] = disp.fechaAsignacion;
-          }
+          final payload = disp.toSupabaseMap();
           await client.from('dispositivos').upsert(payload, onConflict: 'id');
           debugPrint('Dispositivo ${disp.nombre} respaldado en Supabase Nube.');
         } catch (e) {
@@ -141,18 +124,7 @@ class SyncServiceImpl implements SyncService {
       for (var usr in usuarios) {
         if (usr.sincronizado) continue;
         try {
-          final usrPayload = <String, dynamic>{
-            'id': usr.id,
-            'cuenta_id': usr.clienteId,
-            'username': usr.username,
-            'nombre': usr.nombre,
-            'correo': usr.correo,
-            'rol': usr.rol,
-            'activo': usr.activo,
-          };
-          if (usr.ultimoAcceso != null && usr.ultimoAcceso!.isNotEmpty) {
-            usrPayload['ultimo_acceso'] = usr.ultimoAcceso;
-          }
+          final usrPayload = usr.toSupabaseMap();
           await client.from('usuarios').upsert(usrPayload, onConflict: 'id');
 
           if (!usr.sincronizado) {
@@ -186,37 +158,7 @@ class SyncServiceImpl implements SyncService {
       final mediciones = await _medicionRepository.getUnsynced();
       for (var medicion in mediciones) {
         try {
-          final payload = <String, dynamic>{
-            'id': medicion.id,
-            'cuenta_id': medicion.clienteId,
-            'ganadero_id': medicion.ganaderoId,
-            'dispositivo_id': medicion.dispositivoId,
-            'usuario_id': medicion.usuarioId,
-            'observaciones': medicion.observaciones,
-            'es_simulado': medicion.isSimulado,
-          };
-          if (medicion.pdfPath != null && medicion.pdfPath!.isNotEmpty) {
-            payload['pdf_path'] = medicion.pdfPath;
-          }
-
-          // ph/densidad/temperatura son columnas NUMERIC en Supabase, pero
-          // localmente son texto libre del sensor ("N/D" mientras no hay
-          // lectura, o con sufijos como "%"/"°C" según el formato que mande
-          // el ESP32). Mandar ese texto tal cual rompía el upsert COMPLETO
-          // del registro (columna numérica recibiendo texto no numérico),
-          // el mismo patrón silencioso que ya se corrigió para ganaderos.
-          // Si no se puede extraer un número real, se omite la clave para
-          // que Postgres use su propio valor por defecto en vez de fallar.
-          final densVal = _parseSensorNumber(medicion.densidad);
-          if (densVal != null) payload['densidad'] = densVal;
-          final phVal = _parseSensorNumber(medicion.ph);
-          if (phVal != null) payload['ph'] = phVal;
-          final tempVal = _parseSensorNumber(medicion.temperatura);
-          if (tempVal != null) payload['temperatura'] = tempVal;
-
-          if (medicion.fecha.isNotEmpty) {
-            payload['fecha'] = medicion.fecha;
-          }
+          final payload = medicion.toSupabaseMap();
 
           await client.from('mediciones').upsert(payload, onConflict: 'id');
 
@@ -341,13 +283,4 @@ class SyncServiceImpl implements SyncService {
     if (!SupabaseConfig.isInitialized) return;
     debugPrint('Resolución de conflictos verificada.');
   }
-}
-
-/// Extrae el primer número (puede ser negativo) de una lectura de sensor en
-/// formato libre -- ej. "24.44", "5%", "-0.026", "N/D" -- devolviendo null
-/// si no hay ningún número parseable.
-double? _parseSensorNumber(String raw) {
-  final match = RegExp(r'-?[0-9]+(?:\.[0-9]+)?').firstMatch(raw);
-  if (match == null) return null;
-  return double.tryParse(match.group(0)!);
 }

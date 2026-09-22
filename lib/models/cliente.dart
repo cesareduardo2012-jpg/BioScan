@@ -47,6 +47,18 @@ class Cliente {
         'activo': activo ? 1 : 0,
       };
 
+  Map<String, dynamic> toSupabaseMap() {
+    return {
+      'id': id,
+      'nombre': nombre,
+      'empresa': empresa,
+      'telefono': telefono,
+      'correo': correo,
+      'activo': activo,
+      // Omitimos fecha_registro por la misma razón de la migración en Supabase
+    };
+  }
+
   factory Cliente.fromMap(Map<String, dynamic> map) {
     return Cliente(
       id: map['id']?.toString() ?? '',

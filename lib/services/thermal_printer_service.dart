@@ -228,9 +228,16 @@ class ThermalPrinterService {
   // FORMATEO Y GENERACIÓN DE BYTES ESC/POS (58 mm / 32 CARACTERES POR LÍNEA)
   // ===========================================================================
 
+  CapabilityProfile? _profileCache;
+
+  Future<CapabilityProfile> _getProfile() async {
+    _profileCache ??= await CapabilityProfile.load();
+    return _profileCache!;
+  }
+
   /// Genera los bytes ESC/POS para la impresión de prueba
   Future<List<int>> generateTestTicketBytes({DateTime? fecha}) async {
-    final profile = await CapabilityProfile.load();
+    final profile = await _getProfile();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
@@ -305,7 +312,7 @@ class ThermalPrinterService {
     required Ganadero ganadero,
     DateTime? fecha,
   }) async {
-    final profile = await CapabilityProfile.load();
+    final profile = await _getProfile();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
@@ -547,7 +554,11 @@ class ThermalPrinterService {
   }) async {
     debugPrint('[THERMAL PRINTER iOS] Preparando impresión BLE hacia $mac (${bytes.length} bytes)...');
 
-    // 1. Liberar cualquier conexión residual previa en el plugin nativo
+    // 1. Dar tiempo al sistema operativo Bluetooth para estabilizarse, 
+    // especialmente si acabamos de hacer una medición o escaneo.
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    // Liberar cualquier conexión residual en el plugin nativo
     try {
       await PrintBluetoothThermal.disconnect;
     } catch (_) {}
@@ -560,14 +571,31 @@ class ThermalPrinterService {
     }
 
     try {
-      // 2. Conectar al periférico BLE
+      // 2. Conectar al periférico BLE con reintentos
       debugPrint('[THERMAL PRINTER iOS] Conectando a $mac...');
-      if (device.isDisconnected) {
-        await device.connect(
-          timeout: const Duration(seconds: 10),
-          autoConnect: false,
-        );
+      bool connected = false;
+      int connectRetries = 3;
+      while (connectRetries > 0 && !connected) {
+        try {
+          if (device.isDisconnected) {
+            await device.connect(
+              timeout: const Duration(seconds: 8),
+              autoConnect: false,
+            );
+          }
+          connected = true;
+        } catch (e) {
+          connectRetries--;
+          debugPrint('[THERMAL PRINTER iOS] Intento de conexión fallido. Quedan $connectRetries. Error: $e');
+          if (connectRetries == 0) {
+            throw ThermalPrinterException('No fue posible conectar. Verifique que la impresora esté encendida ($e).');
+          }
+          await Future.delayed(const Duration(milliseconds: 1000));
+        }
       }
+
+      // Pequeña pausa pos-conexión para asegurar que los servicios estén listos
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // 3. Descubrir servicios y características
       debugPrint('[THERMAL PRINTER iOS] Descubriendo servicios...');
