@@ -49,9 +49,24 @@ class SyncServiceImpl implements SyncService {
     });
   }
 
+  /// Indica si hay una sesion de Supabase Auth activa.
+  ///
+  /// Sin sesion, auth.uid() es null del lado del servidor, asi que
+  /// get_auth_cuenta_id() devuelve null y TODAS las politicas RLS rechazan
+  /// la operacion con 42501. Antes esto pasaba desapercibido porque las
+  /// politicas incluian "OR auth.role() = 'anon'", que daba paso libre a
+  /// cualquier peticion sin autenticar; al quitarse ese bypass, sincronizar
+  /// sin sesion solo produce decenas de 42501 por ciclo y deja el log
+  /// inservible para diagnosticar problemas reales.
+  bool get _tieneSesion => SupabaseConfig.client.auth.currentSession != null;
+
   @override
   Future<void> syncAll() async {
     if (!SupabaseConfig.isInitialized) return;
+    if (!_tieneSesion) {
+      debugPrint('[SYNC SERVICE] Sin sesion de Supabase Auth. Los cambios quedan en local hasta que se inicie sesion.');
+      return;
+    }
     if (_isSyncing) {
       debugPrint('[SYNC SERVICE] Sincronización ya en curso. Omitiendo...');
       return;
@@ -76,6 +91,11 @@ class SyncServiceImpl implements SyncService {
   Future<void> syncPendingRecords() async {
     if (!SupabaseConfig.isInitialized) {
       debugPrint('[SYNC SERVICE] Cliente de Supabase no inicializado.');
+      return;
+    }
+
+    if (!_tieneSesion) {
+      debugPrint('[SYNC SERVICE] Sin sesion de Supabase Auth. Los cambios quedan en local hasta que se inicie sesion.');
       return;
     }
 
@@ -183,6 +203,7 @@ class SyncServiceImpl implements SyncService {
   @override
   Future<void> downloadChanges() async {
     if (!SupabaseConfig.isInitialized) return;
+    if (!_tieneSesion) return;
     try {
       final client = SupabaseConfig.client;
 
