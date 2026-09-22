@@ -282,9 +282,14 @@ void main() {
       final afterDelete = await ServiceLocator.ganaderoRepository.getGanaderosByCliente(DatabaseMigrator.defaultClienteId);
       expect(afterDelete, isEmpty);
 
-      // ON DELETE CASCADE borra las mediciones asociadas
+      // deleteGanadero es un SOFT delete: marca activo = 0 en vez de borrar la
+      // fila, asi que las mediciones asociadas SOBREVIVEN a proposito. Son el
+      // respaldo de los certificados ya impresos y entregados al ganadero, y
+      // ademas un borrado fisico no se puede propagar por sincronizacion al
+      // resto de dispositivos.
       final medicionesAfterDelete = await ServiceLocator.medicionRepository.getMedicionesByCliente(DatabaseMigrator.defaultClienteId);
-      expect(medicionesAfterDelete, isEmpty);
+      expect(medicionesAfterDelete, hasLength(1));
+      expect(medicionesAfterDelete.first.id, 'm-1');
     });
   });
 
