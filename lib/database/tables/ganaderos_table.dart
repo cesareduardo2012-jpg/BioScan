@@ -11,6 +11,7 @@ class GanaderosTable {
   static const String columnCorreo = 'correo';
   static const String columnFechaRegistro = 'fecha_registro';
   static const String columnSincronizado = 'sincronizado';
+  static const String columnActivo = 'activo';
 
   static const String createTableQuery = '''
     CREATE TABLE IF NOT EXISTS $tableName (
@@ -23,6 +24,7 @@ class GanaderosTable {
       $columnTelefono TEXT NOT NULL,
       $columnCorreo TEXT NOT NULL,
       $columnFechaRegistro TEXT NOT NULL,
+      $columnActivo INTEGER NOT NULL DEFAULT 1,
       $columnSincronizado INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY ($columnClienteId) REFERENCES clientes (id) ON DELETE CASCADE
     )

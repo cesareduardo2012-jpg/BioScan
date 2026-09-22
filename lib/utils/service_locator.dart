@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../database/app_database.dart';
 import '../database/dao/cliente_dao.dart';
 import '../database/dao/dispositivo_dao.dart';
@@ -25,10 +26,17 @@ class ServiceLocator {
   static late AuthService authService;
   static late SyncService syncService;
 
-  static Future<void> init() async {
+  static Future<void> init({Function(String)? onProgress}) async {
+    final start = DateTime.now();
+    debugPrint('[APP_START] ${start.toIso8601String()}');
+    final stopwatch = Stopwatch()..start();
+
+    onProgress?.call('Preparando base de datos local...');
     database = AppDatabase.instance;
     await database.init();
+    debugPrint('[LOCAL_DB_READY] ${stopwatch.elapsedMilliseconds}ms');
 
+    onProgress?.call('Iniciando conexión segura...');
     await SupabaseConfig.init();
 
     final clienteDao = ClienteDao(database);
@@ -43,9 +51,12 @@ class ServiceLocator {
     ganaderoRepository = GanaderoRepositoryImpl(ganaderoDao);
     medicionRepository = MedicionRepositoryImpl(medicionDao);
 
+    onProgress?.call('Verificando sesión activa...');
     authService = AuthService(usuarioRepository);
     await authService.init();
+    debugPrint('[SESSION_READY] ${stopwatch.elapsedMilliseconds}ms');
 
+    onProgress?.call('Finalizando configuración...');
     syncService = SyncServiceImpl(
       clienteRepository,
       usuarioRepository,
@@ -53,5 +64,8 @@ class ServiceLocator {
       ganaderoRepository,
       medicionRepository,
     );
+
+    stopwatch.stop();
+    debugPrint('[APP_READY] ${stopwatch.elapsedMilliseconds}ms');
   }
 }

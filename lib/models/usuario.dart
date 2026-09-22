@@ -10,6 +10,7 @@ class Usuario {
   final String fechaRegistro;
   final String? ultimoAcceso;
   final bool activo;
+  final bool sincronizado;
 
   const Usuario({
     required this.id,
@@ -23,10 +24,19 @@ class Usuario {
     required this.fechaRegistro,
     this.ultimoAcceso,
     bool? activo,
-  }) : activo = activo ?? true;
+    bool? sincronizado,
+  })  : activo = activo ?? true,
+        sincronizado = sincronizado ?? false;
 
-  bool get isAdmin => rol.toUpperCase() == 'ADMINISTRADOR' || rol.toLowerCase() == 'admin';
+  // El backend (RPCs create_operator_user/delete_operator_user/
+  // update_operator_password) trata SUPERADMIN y ADMIN_CUENTA como
+  // administradores válidos además de ADMINISTRADOR -- sin reconocerlos
+  // aquí también, un usuario con esos roles quedaba bloqueado del lado de
+  // Flutter de funciones que la nube sí le permitía.
+  bool get isAdmin =>
+      const {'ADMINISTRADOR', 'ADMIN_CUENTA', 'SUPERADMIN', 'ADMIN'}.contains(rol.toUpperCase());
   bool get isOperador => rol.toUpperCase() == 'OPERADOR' || rol.toLowerCase() == 'tecnico' || rol.toLowerCase() == 'operator';
+  bool get isSuperAdmin => rol.toUpperCase() == 'SUPERADMIN';
 
   Usuario copyWith({
     String? id,
@@ -40,6 +50,7 @@ class Usuario {
     String? fechaRegistro,
     String? ultimoAcceso,
     bool? activo,
+    bool? sincronizado,
   }) {
     return Usuario(
       id: id ?? this.id,
@@ -53,6 +64,7 @@ class Usuario {
       fechaRegistro: fechaRegistro ?? this.fechaRegistro,
       ultimoAcceso: ultimoAcceso ?? this.ultimoAcceso,
       activo: activo ?? this.activo,
+      sincronizado: sincronizado ?? this.sincronizado,
     );
   }
 
@@ -68,7 +80,29 @@ class Usuario {
         'fecha_registro': fechaRegistro,
         'ultimo_acceso': ultimoAcceso,
         'activo': activo ? 1 : 0,
+        'sincronizado': sincronizado ? 1 : 0,
       };
+
+  Map<String, dynamic> toSupabaseMap() {
+    final payload = <String, dynamic>{
+      'id': id,
+      'cuenta_id': clienteId,
+      'username': username,
+      'nombre': nombre,
+      'correo': correo,
+      'rol': rol,
+      'activo': activo,
+      // No mandamos fecha_registro ni password_hash a Supabase public.usuarios
+      // a menos que el esquema lo especifique. En el esquema anterior:
+      // "fecha_registro timestamp with time zone NOT NULL DEFAULT now()" existía,
+      // pero si se dropeó en ganaderos, podría haberse dropeado en usuarios.
+      // Por precaución lo omitimos para dejar que Supabase asigne su DEFAULT (created_at).
+    };
+    if (ultimoAcceso != null && ultimoAcceso!.isNotEmpty) {
+      payload['ultimo_acceso'] = ultimoAcceso;
+    }
+    return payload;
+  }
 
   factory Usuario.fromMap(Map<String, dynamic> map) {
     final rawRol = map['rol']?.toString() ?? 'OPERADOR';
@@ -86,7 +120,7 @@ class Usuario {
 
     return Usuario(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? '',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '',
       username: fallbackUsername,
       nombre: map['nombre']?.toString() ?? '',
       correo: map['correo']?.toString() ?? '',
@@ -96,6 +130,7 @@ class Usuario {
       fechaRegistro: (map['fecha_registro'] ?? map['fechaRegistro'])?.toString() ?? DateTime.now().toIso8601String(),
       ultimoAcceso: (map['ultimo_acceso'] ?? map['ultimoAcceso'])?.toString(),
       activo: map['activo'] == 1 || map['activo'] == true || map['activo'] == null,
+      sincronizado: map['sincronizado'] == 1 || map['sincronizado'] == true,
     );
   }
 }
