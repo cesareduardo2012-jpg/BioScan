@@ -13,6 +13,8 @@ class MedicionesTable {
   static const String columnObservaciones = 'observaciones';
   static const String columnSincronizado = 'sincronizado';
   static const String columnFechaSincronizacion = 'fecha_sincronizacion';
+  static const String columnPdfPath = 'pdf_path';
+  static const String columnEsSimulado = 'es_simulado';
 
   static const String createTableQuery = '''
     CREATE TABLE IF NOT EXISTS $tableName (
@@ -21,13 +23,15 @@ class MedicionesTable {
       $columnGanaderoId TEXT NOT NULL,
       $columnDispositivoId TEXT,
       $columnUsuarioId TEXT,
-      $columnPh TEXT NOT NULL,
-      $columnDensidad TEXT NOT NULL,
-      $columnTemperatura TEXT NOT NULL,
+      $columnPh REAL NOT NULL,
+      $columnDensidad REAL NOT NULL,
+      $columnTemperatura REAL NOT NULL,
       $columnFecha TEXT NOT NULL,
       $columnObservaciones TEXT NOT NULL,
       $columnSincronizado INTEGER NOT NULL DEFAULT 0,
       $columnFechaSincronizacion TEXT,
+      $columnPdfPath TEXT,
+      $columnEsSimulado INTEGER NOT NULL DEFAULT 0,
       FOREIGN KEY ($columnClienteId) REFERENCES clientes (id) ON DELETE CASCADE,
       FOREIGN KEY ($columnGanaderoId) REFERENCES ganaderos (id) ON DELETE CASCADE,
       FOREIGN KEY ($columnDispositivoId) REFERENCES dispositivos (id) ON DELETE SET NULL,

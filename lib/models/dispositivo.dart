@@ -52,10 +52,26 @@ class Dispositivo {
         'activo': activo ? 1 : 0,
       };
 
+  Map<String, dynamic> toSupabaseMap() {
+    final payload = <String, dynamic>{
+      'id': id,
+      'cuenta_id': clienteId,
+      'numero_serie': numeroSerie,
+      'nombre': nombre,
+      'modelo': modelo,
+      'activo': activo,
+      // Omitimos fecha_registro por ser columna generada/no existente en Supabase (created_at).
+    };
+    if (fechaAsignacion != null && fechaAsignacion!.isNotEmpty) {
+      payload['fecha_asignacion'] = fechaAsignacion;
+    }
+    return payload;
+  }
+
   factory Dispositivo.fromMap(Map<String, dynamic> map) {
     return Dispositivo(
       id: map['id']?.toString() ?? '',
-      clienteId: (map['cliente_id'] ?? map['clienteId'])?.toString() ?? '',
+      clienteId: (map['cliente_id'] ?? map['cuenta_id'] ?? map['clienteId'])?.toString() ?? '',
       numeroSerie: (map['numero_serie'] ?? map['numeroSerie'])?.toString() ?? '',
       nombre: map['nombre']?.toString() ?? '',
       modelo: map['modelo']?.toString() ?? '',
