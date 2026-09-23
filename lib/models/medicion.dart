@@ -128,18 +128,28 @@ class Medicion {
       return RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', caseSensitive: false).hasMatch(uuid);
     }
 
-    // Default values to satisfy Supabase NOT NULL and CHECK constraints
+    // Las columnas numericas de Supabase son NOT NULL con CHECK de rango, asi
+    // que una lectura imposible no cabe y hay que ajustarla para que el upsert
+    // no falle. Pero ese ajuste NO puede ser silencioso: un valor recortado se
+    // ve igual que uno medido, y asi 4 de 19 mediciones acabaron con densidad
+    // 0.9000 sin que nadie lo notara. Se registra cada ajuste para mandar
+    // lectura_valida = false junto con el texto crudo del sensor.
+    var lecturaValida = true;
+
     // ph numeric NOT NULL CHECK (ph >= 0.00 AND ph <= 14.00)
-    final phVal = parseSensorNumber(ph) ?? 7.0; 
-    final safePh = phVal.clamp(0.0, 14.0);
+    final phVal = parseSensorNumber(ph);
+    final safePh = (phVal ?? 7.0).clamp(0.0, 14.0);
+    if (phVal == null || phVal != safePh) lecturaValida = false;
 
     // densidad numeric NOT NULL CHECK (densidad >= 0.9000 AND densidad <= 1.2000)
-    final densVal = parseSensorNumber(densidad) ?? 1.0;
-    final safeDens = densVal.clamp(0.9, 1.2);
+    final densVal = parseSensorNumber(densidad);
+    final safeDens = (densVal ?? 1.0).clamp(0.9, 1.2);
+    if (densVal == null || densVal != safeDens) lecturaValida = false;
 
     // temperatura numeric NOT NULL CHECK (temperatura >= -20.00 AND temperatura <= 120.00)
-    final tempVal = parseSensorNumber(temperatura) ?? 20.0;
-    final safeTemp = tempVal.clamp(-20.0, 120.0);
+    final tempVal = parseSensorNumber(temperatura);
+    final safeTemp = (tempVal ?? 20.0).clamp(-20.0, 120.0);
+    if (tempVal == null || tempVal != safeTemp) lecturaValida = false;
 
     final fechaUtc = DateTime.tryParse(fecha)?.toUtc().toIso8601String() ?? DateTime.now().toUtc().toIso8601String();
 
@@ -152,6 +162,13 @@ class Medicion {
       'temperatura': safeTemp,
       'fecha': fechaUtc,
       'observaciones': observaciones.replaceAll('\x00', ''), // Limpiar null bytes heredados de registros viejos
+      // Lo que realmente mando el sensor, antes de convertir y recortar. Si
+      // lectura_valida es false, estas columnas son el unico registro del
+      // valor medido: las numericas traen el ajustado.
+      'lectura_valida': lecturaValida,
+      'ph_raw': ph,
+      'densidad_raw': densidad,
+      'temperatura_raw': temperatura,
     };
 
     if (dispositivoId != null && isValidUuid(dispositivoId!)) {
