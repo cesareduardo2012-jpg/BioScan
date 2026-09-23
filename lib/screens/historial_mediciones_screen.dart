@@ -4,6 +4,7 @@ import '../models/cliente.dart';
 import '../models/dispositivo.dart';
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
+import '../utils/fecha_formatter.dart';
 import '../models/usuario.dart';
 import '../services/pdf_report_service.dart';
 import '../utils/service_locator.dart';
@@ -368,7 +369,7 @@ class _HistorialMedicionesScreenState extends State<HistorialMedicionesScreen> {
                                         Icon(Icons.calendar_today_outlined, size: 13, color: Colors.grey.shade600),
                                         const SizedBox(width: 4),
                                         Text(
-                                          medicion.fecha.length > 19 ? medicion.fecha.substring(0, 19).replaceAll('T', ' ') : medicion.fecha,
+                                          FechaFormatter.fechaHoraConSegundos(medicion.fecha),
                                           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                         ),
                                       ],

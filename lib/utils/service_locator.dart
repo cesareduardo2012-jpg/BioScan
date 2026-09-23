@@ -63,6 +63,7 @@ class ServiceLocator {
       dispositivoRepository,
       ganaderoRepository,
       medicionRepository,
+      authService,
     );
 
     stopwatch.stop();

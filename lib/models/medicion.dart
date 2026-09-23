@@ -92,28 +92,40 @@ class Medicion {
     );
   }
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'cliente_id': clienteId,
-        'ganadero_id': ganaderoId,
-        'dispositivo_id': dispositivoId,
-        'usuario_id': usuarioId,
-        'ph': ph,
-        'densidad': densidad,
-        'temperatura': temperatura,
-        'fecha': fecha,
-        'observaciones': observaciones,
-        'sincronizado': sincronizado ? 1 : 0,
-        'fecha_sincronizacion': fechaSincronizacion,
-        'pdf_path': pdfPath,
-        'es_simulado': isSimulado ? 1 : 0,
-      };
+  Map<String, dynamic> toMap() {
+    double parseSensorNumber(String val) {
+      final text = val.replaceAll(RegExp(r'[^0-9.-]'), '');
+      if (text.isEmpty) return 0.0;
+      return double.tryParse(text) ?? 0.0;
+    }
+
+    return {
+      'id': id,
+      'cliente_id': clienteId,
+      'ganadero_id': ganaderoId,
+      'dispositivo_id': dispositivoId,
+      'usuario_id': usuarioId,
+      'ph': parseSensorNumber(ph),
+      'densidad': parseSensorNumber(densidad),
+      'temperatura': parseSensorNumber(temperatura),
+      'fecha': fecha,
+      'observaciones': observaciones.replaceAll('\x00', ''),
+      'sincronizado': sincronizado ? 1 : 0,
+      'fecha_sincronizacion': fechaSincronizacion,
+      'pdf_path': pdfPath,
+      'es_simulado': isSimulado ? 1 : 0,
+    };
+  }
 
   Map<String, dynamic> toSupabaseMap() {
     double? parseSensorNumber(String val) {
       final text = val.replaceAll(RegExp(r'[^0-9.-]'), '');
       if (text.isEmpty) return null;
       return double.tryParse(text);
+    }
+
+    bool isValidUuid(String uuid) {
+      return RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$', caseSensitive: false).hasMatch(uuid);
     }
 
     // Default values to satisfy Supabase NOT NULL and CHECK constraints
@@ -139,16 +151,24 @@ class Medicion {
       'densidad': safeDens,
       'temperatura': safeTemp,
       'fecha': fechaUtc,
-      'observaciones': observaciones,
+      'observaciones': observaciones.replaceAll('\x00', ''), // Limpiar null bytes heredados de registros viejos
     };
 
-    if (dispositivoId != null && dispositivoId!.isNotEmpty) payload['dispositivo_id'] = dispositivoId;
-    if (usuarioId != null && usuarioId!.isNotEmpty) payload['usuario_id'] = usuarioId;
+    if (dispositivoId != null && isValidUuid(dispositivoId!)) {
+      payload['dispositivo_id'] = dispositivoId;
+    }
+    if (usuarioId != null && isValidUuid(usuarioId!)) {
+      payload['usuario_id'] = usuarioId;
+    }
     if (pdfPath != null && pdfPath!.isNotEmpty) payload['pdf_path'] = pdfPath;
-    
-    // NOTA: es_simulado no existe en Supabase public.mediciones según el esquema proporcionado.
-    // Si la migración lo añadió, se debe agregar aquí, pero para evitar el error de Postgrest,
-    // se omite por defecto hasta confirmarlo.
+
+    // es_simulado se omite a proposito por decision del equipo (23/09/2026).
+    // La columna SI existe -- la agrego la migracion
+    // 20260914_add_es_simulado_column.sql, verificada en el proyecto real --
+    // pero por ahora no se distingue el origen de la lectura en la nube.
+    // Consecuencia a tener presente: al no mandarse, la columna toma su valor
+    // por defecto (false), asi que las mediciones del Modo Simulacion quedan
+    // registradas como si fueran lecturas reales del sensor.
 
     return payload;
   }
