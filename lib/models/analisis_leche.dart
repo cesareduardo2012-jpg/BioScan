@@ -2,6 +2,16 @@ import 'medicion.dart';
 
 /// Modelo de evaluación analítica oficial para diagnosticar la calidad de la muestra de leche
 /// según las especificaciones normativas NOM-155-SCFI-2012, FAO y COFOCALEC.
+/// Densidad de referencia de la leche cruda normal, en g/mL.
+/// La NOM-155-SCFI-2012 fija 1.028 como minimo; 1.030 es el valor tipico que
+/// se usa como referencia para estimar dilucion.
+const double _densidadLecheNormal = 1.030;
+
+/// Cuanto mas densa es la leche normal que el agua pura (1.030 - 1.000).
+/// Es el rango sobre el que se mide la dilucion: agregar agua mueve la
+/// densidad linealmente dentro de este intervalo.
+const double _rangoDensidadLecheAgua = 0.030;
+
 class AnalisisLeche {
   final double? ph;
   final double? densidad;
@@ -66,7 +76,13 @@ class AnalisisLeche {
         waterDetected = true;
       }
       if (waterPct != null) {
-        densVal = 1.031 - (waterPct * 0.0008);
+        // Inversa de la formula lactometrica: diluir con agua mueve la
+        // densidad linealmente desde la de la leche (1.030) hacia la del agua
+        // (1.000), asi que cada 1% de agua resta 0.0003 g/mL. El factor
+        // anterior (0.0008) daba 0.951 g/mL para 100% de agua, por debajo de
+        // la densidad del agua pura.
+        densVal = _densidadLecheNormal -
+            (waterPct.clamp(0.0, 100.0) / 100.0) * _rangoDensidadLecheAgua;
       }
     } else if (parsedNum != null) {
       if (parsedNum > 20 && parsedNum < 40) {
@@ -85,10 +101,18 @@ class AnalisisLeche {
         waterPct = null;
       } else if (densVal < 1.0280) {
         waterDetected = true;
-        // Estimación estándar de % de agua agregada:
-        // % Agua = ((1.030 - Densidad) / 1.030) * factor de sólidos (~280)
-        waterPct = ((1.030 - densVal) / 1.030) * 280.0;
-        if (waterPct < 0.5) waterPct = 0.5;
+        // % de agua agregada por grados lactometricos (Quevenne):
+        //
+        //   L = (densidad - 1) * 1000        -> leche normal = 30, agua = 0
+        //   % agua = (L_normal - L_muestra) / L_normal * 100
+        //
+        // que se reduce a dividir entre el RANGO entre leche y agua (0.030),
+        // no entre la densidad de la leche. La formula anterior dividia entre
+        // 1.030 y compensaba multiplicando por 280, lo que subestimaba el agua
+        // unas 12 veces: una mezcla 50/50 medida en 1.016 g/mL se reportaba
+        // como 3.8% en vez de ~47%, y un vaso de agua pura como 8.2%.
+        waterPct = ((_densidadLecheNormal - densVal) / _rangoDensidadLecheAgua) * 100.0;
+        if (waterPct < 0.0) waterPct = 0.0;
         if (waterPct > 100.0) waterPct = 100.0;
       } else {
         waterPct = 0.0;
