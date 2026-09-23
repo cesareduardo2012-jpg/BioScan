@@ -10,6 +10,7 @@ import '../repositories/ganadero_repository.dart';
 import '../repositories/medicion_repository.dart';
 import '../repositories/usuario_repository.dart';
 import '../utils/supabase_config.dart';
+import 'auth_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 abstract class SyncService {
@@ -25,6 +26,7 @@ class SyncServiceImpl implements SyncService {
   final DispositivoRepository _dispositivoRepository;
   final GanaderoRepository _ganaderoRepository;
   final MedicionRepository _medicionRepository;
+  final AuthService _authService;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -35,9 +37,21 @@ class SyncServiceImpl implements SyncService {
     this._dispositivoRepository,
     this._ganaderoRepository,
     this._medicionRepository,
+    this._authService,
   ) {
     _initConnectivityListener();
   }
+
+  /// Cuenta del usuario con sesion activa.
+  ///
+  /// Los upserts van en lote (una peticion por tabla). RLS evalua CADA fila
+  /// del lote, asi que una sola fila de otra cuenta hace que Postgrest
+  /// rechace el lote COMPLETO con 42501 -- incluidas las filas que si estaban
+  /// permitidas. Como el SQLite local puede arrastrar registros de otros
+  /// tenants (datos de demo, o de una sesion anterior con otra cuenta), hay
+  /// que filtrarlos antes de armar el payload en vez de confiar en el
+  /// fallback secuencial.
+  String get _cuentaActiva => _authService.activeClienteId;
 
   void _initConnectivityListener() {
     Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
@@ -97,7 +111,10 @@ class SyncServiceImpl implements SyncService {
       final client = SupabaseConfig.client;
 
       // 1. Sincronizar Cuentas/Clientes a Supabase Nube
-      final clientes = await _clienteRepository.getClientes();
+      final cuentaId = _cuentaActiva;
+      final clientes = (await _clienteRepository.getClientes())
+          .where((c) => c.id == cuentaId)
+          .toList();
       if (clientes.isNotEmpty) {
         try {
           final payload = clientes.map((c) => c.toSupabaseMap()).toList();
@@ -106,13 +123,19 @@ class SyncServiceImpl implements SyncService {
         } catch (e) {
           debugPrint('Bulk upsert de clientes falló, usando fallback secuencial: $e');
           for (var c in clientes) {
-            try { await client.from('cuentas').upsert(c.toSupabaseMap(), onConflict: 'id'); } catch (_) {}
+            try {
+              await client.from('cuentas').upsert(c.toSupabaseMap(), onConflict: 'id');
+            } catch (e2) {
+              debugPrint('Error al respaldar cuenta ${c.id}: $e2');
+            }
           }
         }
       }
 
       // 2. Sincronizar Dispositivos a Supabase Nube
-      final dispositivos = await _dispositivoRepository.getDispositivos();
+      final dispositivos = (await _dispositivoRepository.getDispositivos())
+          .where((d) => d.clienteId == cuentaId)
+          .toList();
       if (dispositivos.isNotEmpty) {
         try {
           final payload = dispositivos.map((d) => d.toSupabaseMap()).toList();
@@ -121,13 +144,19 @@ class SyncServiceImpl implements SyncService {
         } catch (e) {
           debugPrint('Bulk upsert de dispositivos falló, usando fallback secuencial: $e');
           for (var d in dispositivos) {
-            try { await client.from('dispositivos').upsert(d.toSupabaseMap(), onConflict: 'id'); } catch (_) {}
+            try {
+              await client.from('dispositivos').upsert(d.toSupabaseMap(), onConflict: 'id');
+            } catch (e2) {
+              debugPrint('Error al respaldar dispositivo ${d.id}: $e2');
+            }
           }
         }
       }
 
       // 3. Sincronizar Usuarios a Supabase Nube
-      final usuarios = await _usuarioRepository.getUsuarios();
+      final usuarios = (await _usuarioRepository.getUsuarios())
+          .where((u) => u.clienteId == cuentaId)
+          .toList();
       final unsyncedUsuarios = usuarios.where((u) => !u.sincronizado).toList();
       if (unsyncedUsuarios.isNotEmpty) {
         try {
@@ -146,13 +175,15 @@ class SyncServiceImpl implements SyncService {
               await client.from('usuarios').upsert(u.toSupabaseMap(), onConflict: 'id');
               final updated = u.copyWith(sincronizado: true);
               await _usuarioRepository.updateUsuario(updated);
-            } catch (_) {}
+            } catch (e2) { debugPrint('Error en respaldo secuencial: $e2'); }
           }
         }
       }
 
       // 4. Sincronizar Ganaderos a Supabase Nube
-      final ganaderos = await _ganaderoRepository.getUnsynced();
+      final ganaderos = (await _ganaderoRepository.getUnsynced())
+          .where((g) => g.clienteId == cuentaId)
+          .toList();
       if (ganaderos.isNotEmpty) {
         try {
           final payload = ganaderos.map((g) => g.toSupabaseMap()).toList();
@@ -170,13 +201,15 @@ class SyncServiceImpl implements SyncService {
               await client.from('ganaderos').upsert(g.toSupabaseMap(), onConflict: 'id');
               final updated = g.copyWith(sincronizado: true);
               await _ganaderoRepository.updateGanadero(updated);
-            } catch (_) {}
+            } catch (e2) { debugPrint('Error en respaldo secuencial: $e2'); }
           }
         }
       }
 
       // 5. Sincronizar Mediciones a Supabase Nube
-      final mediciones = await _medicionRepository.getUnsynced();
+      final mediciones = (await _medicionRepository.getUnsynced())
+          .where((m) => m.clienteId == cuentaId)
+          .toList();
       if (mediciones.isNotEmpty) {
         try {
           final payload = mediciones.map((m) => m.toSupabaseMap()).toList();

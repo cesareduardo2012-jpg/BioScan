@@ -10,6 +10,7 @@ import '../models/cliente.dart';
 import '../models/dispositivo.dart';
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
+import '../utils/fecha_formatter.dart';
 import '../models/usuario.dart';
 
 /// Modelo interno de evaluación analítica para diagnosticar la muestra según normas oficiales
@@ -381,7 +382,7 @@ class PdfReportService {
                           style: pw.TextStyle(fontSize: 8.5, fontWeight: pw.FontWeight.bold, color: subtleTextColor),
                         ),
                         pw.Text(
-                          medicion.fecha,
+                          FechaFormatter.fechaHora(medicion.fecha),
                           style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: darkTextColor),
                         ),
                       ],

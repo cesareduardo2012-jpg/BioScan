@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/analisis_leche.dart';
 import '../models/ganadero.dart';
 import '../models/medicion.dart';
+import '../utils/fecha_formatter.dart';
 
 /// Excepción personalizada para errores del módulo de impresión térmica
 class ThermalPrinterException implements Exception {
@@ -321,15 +322,10 @@ class ThermalPrinterService {
 
     final analysis = AnalisisLeche.evaluate(medicion);
 
-    // Parsear fecha
-    DateTime parsedDate;
-    try {
-      parsedDate = fecha ?? DateTime.parse(medicion.fecha);
-    } catch (_) {
-      parsedDate = fecha ?? DateTime.now();
-    }
-    final dateStr = '${parsedDate.day.toString().padLeft(2, '0')}/${parsedDate.month.toString().padLeft(2, '0')}/${parsedDate.year} '
-        '${parsedDate.hour.toString().padLeft(2, '0')}:${parsedDate.minute.toString().padLeft(2, '0')}';
+    // La medicion se guarda en UTC; hay que volverla a hora local o el ticket
+    // sale con la hora adelantada respecto al momento real de la prueba.
+    final parsedDate = fecha?.toLocal() ?? FechaFormatter.aLocal(medicion.fecha) ?? DateTime.now();
+    final dateStr = FechaFormatter.fechaHora(parsedDate.toIso8601String());
 
     final folioShort = medicion.id.length > 8 ? medicion.id.substring(0, 8).toUpperCase() : medicion.id.toUpperCase();
 

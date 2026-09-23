@@ -161,10 +161,15 @@ class Medicion {
       payload['usuario_id'] = usuarioId;
     }
     if (pdfPath != null && pdfPath!.isNotEmpty) payload['pdf_path'] = pdfPath;
-    
-    // NOTA: es_simulado no existe en Supabase public.mediciones según el esquema proporcionado.
-    // Si la migración lo añadió, se debe agregar aquí, pero para evitar el error de Postgrest,
-    // se omite por defecto hasta confirmarlo.
+
+    // es_simulado SI existe en public.mediciones: lo agrego la migracion
+    // 20260914_add_es_simulado_column.sql, aplicada y verificada en el
+    // proyecto real el 21/09/2026. Omitirlo hacia que la columna tomara su
+    // valor por defecto (false), de modo que una lectura tomada en Modo
+    // Simulacion quedaba registrada en la nube como si fuera una medicion
+    // real del sensor -- justo la distincion que respalda un certificado de
+    // calidad entregado al ganadero.
+    payload['es_simulado'] = isSimulado;
 
     return payload;
   }
