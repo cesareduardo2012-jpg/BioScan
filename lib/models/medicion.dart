@@ -162,14 +162,13 @@ class Medicion {
     }
     if (pdfPath != null && pdfPath!.isNotEmpty) payload['pdf_path'] = pdfPath;
 
-    // es_simulado SI existe en public.mediciones: lo agrego la migracion
-    // 20260914_add_es_simulado_column.sql, aplicada y verificada en el
-    // proyecto real el 21/09/2026. Omitirlo hacia que la columna tomara su
-    // valor por defecto (false), de modo que una lectura tomada en Modo
-    // Simulacion quedaba registrada en la nube como si fuera una medicion
-    // real del sensor -- justo la distincion que respalda un certificado de
-    // calidad entregado al ganadero.
-    payload['es_simulado'] = isSimulado;
+    // es_simulado se omite a proposito por decision del equipo (23/09/2026).
+    // La columna SI existe -- la agrego la migracion
+    // 20260914_add_es_simulado_column.sql, verificada en el proyecto real --
+    // pero por ahora no se distingue el origen de la lectura en la nube.
+    // Consecuencia a tener presente: al no mandarse, la columna toma su valor
+    // por defecto (false), asi que las mediciones del Modo Simulacion quedan
+    // registradas como si fueran lecturas reales del sensor.
 
     return payload;
   }
