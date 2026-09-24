@@ -146,10 +146,17 @@ class AnalisisLeche {
 
     if (densImplausible) {
       title = 'ALERTA CRÍTICA: LECTURA DE DENSIDAD NO VÁLIDA';
-      subtitle = 'La densidad reportada (${densVal!.toStringAsFixed(4)} g/mL) está fuera de cualquier rango físicamente posible para leche. Verifique el sensor y repita la medición antes de emitir un dictamen; no se aplicó el cálculo de % de agua por estar fuera de su rango de validez.';
+      subtitle = 'La densidad reportada (${densVal!.toStringAsFixed(4)} g/mL) está fuera de cualquier rango físicamente posible para leche. Verifique el sensor y repita la medición antes de emitir un dictamen.';
     } else if (hasDanger) {
       title = 'ALERTA CRÍTICA: AGUA ADICIONADA DETECTADA';
-      subtitle = 'Muestra NO CONFORME según NOM-155-SCFI-2012. Densidad por debajo de 1.028 g/mL con dilución estimada de ${waterPct != null ? waterPct.toStringAsFixed(1) : ''}%. La leche no cumple estándares para acopio por disminución severa de sólidos no grasos.';
+      // Se reporta el hallazgo sin cuantificarlo. El % estimado arrastra
+      // sesgos que no se pueden controlar en campo: hasta +-5 puntos segun
+      // donde caiga la leche dentro del rango de la NOM (1.028-1.034), hasta
+      // +6 puntos por medir a temperatura ambiente en vez de a 15 C, y una
+      // sensibilidad enorme al volumen de la muestra (1 mL de error mueve el
+      // resultado 67 puntos). La deteccion SI es solida --densidad por debajo
+      // de 1.028 g/mL-- asi que se afirma lo que se puede sostener.
+      subtitle = 'Muestra NO CONFORME según NOM-155-SCFI-2012. La densidad se encuentra por debajo del mínimo de 1.028 g/mL establecido para leche cruda, lo que indica adición de agua. La leche no cumple estándares para acopio por disminución de sólidos no grasos.';
     } else if (hasWarning) {
       title = 'PRECAUCIÓN: MUESTRA FUERA DE RANGO ÓPTIMO';
       if (isAcid) {

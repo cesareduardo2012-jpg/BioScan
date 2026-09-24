@@ -408,15 +408,14 @@ class ThermalPrinterService {
           width: PosTextSize.size2,
         ),
       );
-      final waterPctStr = analysis.estimatedWaterPct != null
-          ? '${analysis.estimatedWaterPct!.toStringAsFixed(1)}%'
-          : 'DETECTADA';
+      // Se reporta el hallazgo sin cuantificarlo: ver nota en
+      // analisis_leche.dart sobre los sesgos del % estimado.
       bytes += generator.text(
         '** ADULTERACION CON AGUA **',
         styles: const PosStyles(align: PosAlign.center, bold: true),
       );
       bytes += generator.text(
-        'Presencia de agua: SI ($waterPctStr)',
+        'Presencia de agua: SI',
         styles: const PosStyles(align: PosAlign.center, bold: true),
       );
     } else {
@@ -471,9 +470,7 @@ class ThermalPrinterService {
     bytes += generator.text(_format3Cols('Temperatura', tempValStr, tempStatus));
 
     // Agua Adicionada
-    final aguaValStr = analysis.hasWaterAdulteration
-        ? '${analysis.estimatedWaterPct != null ? analysis.estimatedWaterPct!.toStringAsFixed(1) : ''}%'
-        : '0.0%';
+    final aguaValStr = analysis.hasWaterAdulteration ? 'SI' : 'NO';
     final aguaStatus = analysis.hasWaterAdulteration ? 'ALERTA' : 'OK';
     bytes += generator.text(_format3Cols('Agua adicionada', aguaValStr, aguaStatus));
 

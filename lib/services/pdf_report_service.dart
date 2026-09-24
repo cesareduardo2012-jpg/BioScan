@@ -577,7 +577,7 @@ class PdfReportService {
                       title: 'DENSIDAD Y AGUA',
                       measuredValue: analysis.densidad != null ? '${analysis.densidad!.toStringAsFixed(3)} g/mL' : medicion.agua,
                       subValueNote: analysis.hasWaterAdulteration
-                          ? 'ALERTA: ~${analysis.estimatedWaterPct?.toStringAsFixed(1)}% AGUA ADICIONADA'
+                          ? 'ALERTA: AGUA ADICIONADA'
                           : '0.0% AGUA (Conforme)',
                       referenceText: '1.028 - 1.034 g/mL (0% Agua)',
                       sourceText: 'NOM-155-SCFI-2012 / COFOCALEC',
@@ -719,7 +719,7 @@ class PdfReportService {
                       _buildDataCell('% Agua Adicionada', isBold: true),
                       _buildDataCell(
                         analysis.hasWaterAdulteration
-                            ? '~${analysis.estimatedWaterPct?.toStringAsFixed(1)}% AGUA'
+                            ? 'AGUA ADICIONADA'
                             : '0.0 % (Ausencia)',
                         textColor: analysis.hasWaterAdulteration ? PdfColor.fromHex('#B71C1C') : darkTextColor,
                         isBold: true,
